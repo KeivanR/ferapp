@@ -14,7 +14,7 @@ from nutrition import (
     search_foods,
 )
 
-FOODS = load_foods(Path(__file__).parent / "foods.csv")
+FOODS = load_foods(Path(__file__).parent / "foods_demo.csv")
 
 
 def test_csv_loads_all_nutrients():
@@ -68,3 +68,30 @@ def test_completion_can_exceed_one():
     ratios = completion(daily_totals([{"food": "boudin noir", "grams": 200}], FOODS), rec)
     assert ratios["fer"] > 1
     assert ratios["calcium"] < 0.1
+
+
+# --- conversion Ciqual -------------------------------------------------------
+from build_foods import parse_value
+
+
+def test_parse_value_ciqual_formats():
+    assert parse_value("2,45") == pytest.approx(2.45)
+    assert parse_value("-") is None
+    assert parse_value(None) is None
+    assert parse_value("traces") == 0
+    assert parse_value("< 0,25") == 0
+    assert parse_value("<\n0,0005") == 0
+    assert parse_value(3) == 3.0
+
+
+def test_real_ciqual_csv_if_present():
+    path = Path(__file__).parent / "foods.csv"
+    if not path.exists():
+        pytest.skip("foods.csv non généré")
+    foods = load_foods(path)
+    assert len(foods) > 2000
+    assert any("Lentille verte, bouillie" in f["name"] for f in foods.values())
+    hits = search_foods("lentille", foods)
+    assert hits and all("lentille" in normalize(h) for h in hits)
+    # les plus courts d'abord
+    assert len(hits[0]) <= len(hits[-1])

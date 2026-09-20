@@ -250,7 +250,7 @@ def main(page: ft.Page):
             grams = parse_grams(grams_field.value or "")
             ok = True
             if food is None:
-                food_field.error = "Aliment introuvable dans la base"
+                food_field.error = "Choisis un aliment dans la liste"
                 ok = False
             if grams is None:
                 grams_field.error = "Invalide"

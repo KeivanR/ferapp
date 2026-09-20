@@ -144,8 +144,9 @@ def load_foods(path: str | Path) -> dict[str, dict]:
     return foods
 
 
-def search_foods(query: str, foods: dict[str, dict], limit: int = 6) -> list[str]:
-    """Noms d'aliments correspondant à la saisie (début de nom d'abord, puis contient)."""
+def search_foods(query: str, foods: dict[str, dict], limit: int = 8) -> list[str]:
+    """Noms d'aliments correspondant à la saisie : début de nom d'abord, puis « contient
+    tous les mots » ; dans chaque groupe, les noms les plus courts (les plus génériques) en premier."""
     q = normalize(query)
     if not q:
         return []
@@ -155,7 +156,7 @@ def search_foods(query: str, foods: dict[str, dict], limit: int = 6) -> list[str
             starts.append(food["name"])
         elif all(word in norm for word in q.split()):
             contains.append(food["name"])
-    return (sorted(starts) + sorted(contains))[:limit]
+    return (sorted(starts, key=lambda s: (len(s), s)) + sorted(contains, key=lambda s: (len(s), s)))[:limit]
 
 
 def find_food(name: str, foods: dict[str, dict]) -> dict | None:

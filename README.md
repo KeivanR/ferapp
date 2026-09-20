@@ -21,18 +21,26 @@ pytest                        # tests de la logique
 | --- | --- |
 | `main.py` | Interface : page profil + page principale (saisie, cercles, liste des repas) |
 | `nutrition.py` | Logique : chargement du CSV, apports de référence, calculs |
-| `foods.csv` | Base d'aliments (valeurs pour 100 g) — à éditer à la main |
+| `foods.csv` | Base Ciqual convertie (valeurs pour 100 g), générée par `build_foods.py` |
+| `build_foods.py` | Convertit la table Ciqual `.xlsx` en `foods.csv` (à lancer sur ton ordinateur) |
+| `foods_demo.csv` | Mini-base de 45 aliments utilisée par les tests |
 | `storage.py` | Sauvegarde du profil et du journal (JSON local) |
 | `test_nutrition.py` | Tests unitaires de la logique |
 
-## Modifier la base d'aliments
+## Mettre à jour la base Ciqual
 
-Ajoute une ligne à `foods.csv` (séparateur virgule, valeurs pour 100 g, point décimal).
-Colonnes : `aliment,fer_mg,calcium_mg,magnesium_mg,zinc_mg,potassium_mg,iode_ug,selenium_ug`.
+```bash
+pip install openpyxl
+python build_foods.py "Table Ciqual 2025_FR_2025_11_03.xlsx"
+```
+
+Nettoyage : `-` = manquant (compté 0), `traces` et `< x` = 0 (choix prudent), virgules décimales converties.
+Les aliments sans aucun minéral suivi renseigné sont écartés. Les vitamines A, D, E, K1, C, B9, B12
+sont déjà dans le CSV, prêtes à être ajoutées.
 
 ## Ajouter un nutriment (ex. vitamine A)
 
-1. Ajoute une colonne `vitamine_a_ug` dans `foods.csv`.
+1. Vérifie que la colonne existe dans `foods.csv` (les vitamines y sont déjà ; sinon ajoute-la dans `COLUMNS` de `build_foods.py`).
 2. Ajoute une entrée dans `NUTRIENTS` (`nutrition.py`).
 3. Ajoute ses apports de référence dans `REFERENCES` (`nutrition.py`).
 
@@ -40,7 +48,6 @@ Les cercles se génèrent automatiquement à partir de `NUTRIENTS`.
 
 ## Avertissement
 
-Les valeurs de `foods.csv` et les apports de référence de `nutrition.py` sont des ordres de
-grandeur saisis pour le prototype (inspirés des tables Ciqual et des références
-EFSA/ANSES) : à vérifier et à remplacer par les vraies tables avant tout usage réel.
+Les aliments viennent de la vraie table Ciqual, mais les apports de référence de `nutrition.py`
+sont des ordres de grandeur saisis pour le prototype (inspirés EFSA/ANSES) : à vérifier avant tout usage réel.
 Cette app n'est pas un dispositif médical.
