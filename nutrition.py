@@ -13,20 +13,27 @@ from __future__ import annotations
 
 import csv
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # --------------------------------------------------------------------------- #
 # Nutriments suivis : clé (= nom de colonne du CSV sans l'unité), libellé, unité
 # --------------------------------------------------------------------------- #
 NUTRIENTS = [
-    {"key": "fer", "label": "Fer", "unit": "mg", "col": "fer_mg"},
-    {"key": "calcium", "label": "Calcium", "unit": "mg", "col": "calcium_mg"},
-    {"key": "magnesium", "label": "Magnésium", "unit": "mg", "col": "magnesium_mg"},
-    {"key": "zinc", "label": "Zinc", "unit": "mg", "col": "zinc_mg"},
-    {"key": "potassium", "label": "Potassium", "unit": "mg", "col": "potassium_mg"},
-    {"key": "iode", "label": "Iode", "unit": "µg", "col": "iode_ug"},
-    {"key": "selenium", "label": "Sélénium", "unit": "µg", "col": "selenium_ug"},
+    {"key": "fer", "label": "Fer", "unit": "mg", "col": "fer_mg", "group": "Minéraux"},
+    {"key": "calcium", "label": "Calcium", "unit": "mg", "col": "calcium_mg", "group": "Minéraux"},
+    {"key": "magnesium", "label": "Magnésium", "unit": "mg", "col": "magnesium_mg", "group": "Minéraux"},
+    {"key": "zinc", "label": "Zinc", "unit": "mg", "col": "zinc_mg", "group": "Minéraux"},
+    {"key": "potassium", "label": "Potassium", "unit": "mg", "col": "potassium_mg", "group": "Minéraux"},
+    {"key": "iode", "label": "Iode", "unit": "µg", "col": "iode_ug", "group": "Minéraux"},
+    {"key": "selenium", "label": "Sélénium", "unit": "µg", "col": "selenium_ug", "group": "Minéraux"},
+    {"key": "vitamine_a", "label": "Vitamine A", "unit": "µg", "col": "vitamine_a_ug", "group": "Vitamines"},
+    {"key": "vitamine_d", "label": "Vitamine D", "unit": "µg", "col": "vitamine_d_ug", "group": "Vitamines"},
+    {"key": "vitamine_e", "label": "Vitamine E", "unit": "mg", "col": "vitamine_e_mg", "group": "Vitamines"},
+    {"key": "vitamine_k", "label": "Vitamine K", "unit": "µg", "col": "vitamine_k1_ug", "group": "Vitamines"},
+    {"key": "vitamine_c", "label": "Vitamine C", "unit": "mg", "col": "vitamine_c_mg", "group": "Vitamines"},
+    {"key": "vitamine_b9", "label": "Vitamine B9", "unit": "µg", "col": "vitamine_b9_ug", "group": "Vitamines"},
+    {"key": "vitamine_b12", "label": "Vitamine B12", "unit": "µg", "col": "vitamine_b12_ug", "group": "Vitamines"},
 ]
 
 # --------------------------------------------------------------------------- #
@@ -69,7 +76,43 @@ REFERENCES: dict[str, dict] = {
         **_BOTH([(3, 15), (6, 30), (10, 45), (14, 60), (200, 70)]),
         "allaitement": 85,
     },
+    # --- Vitamines (ordres de grandeur inspirés des références EFSA) ---
+    "vitamine_a": {  # µg d'équivalents rétinol
+        "H": [(3, 250), (6, 300), (10, 400), (14, 600), (200, 750)],
+        "F": [(3, 250), (6, 300), (10, 400), (14, 600), (200, 650)],
+        "grossesse": 700,
+        "allaitement": 1300,
+    },
+    "vitamine_d": {  # µg, apport adéquat identique pour tous à partir de 1 an
+        **_BOTH([(200, 15)]),
+    },
+    "vitamine_e": {  # mg d'alpha-tocophérol
+        "H": [(3, 6), (10, 9), (14, 13), (200, 13)],
+        "F": [(3, 6), (10, 9), (14, 11), (200, 11)],
+    },
+    "vitamine_k": {  # µg (K1)
+        **_BOTH([(3, 12), (6, 20), (10, 30), (14, 45), (17, 65), (200, 70)]),
+    },
+    "vitamine_c": {  # mg
+        "H": [(3, 20), (6, 30), (10, 45), (14, 70), (17, 100), (200, 110)],
+        "F": [(3, 20), (6, 30), (10, 45), (14, 70), (17, 90), (200, 95)],
+        "grossesse": 105,
+        "allaitement": 155,
+    },
+    "vitamine_b9": {  # µg (folates)
+        **_BOTH([(3, 120), (6, 140), (10, 200), (14, 270), (200, 330)]),
+        "grossesse": 600,
+        "allaitement": 500,
+    },
+    "vitamine_b12": {  # µg
+        **_BOTH([(6, 1.5), (10, 2.5), (14, 3.5), (200, 4)]),
+        "grossesse": 4.5,
+        "allaitement": 5,
+    },
 }
+
+
+ALL_KEYS = [n["key"] for n in NUTRIENTS]
 
 
 @dataclass
@@ -78,6 +121,8 @@ class Profile:
     sex: str = "F"  # "F" ou "H"
     pregnant: bool = False
     breastfeeding: bool = False
+    # Clés des nutriments affichés (choix multiple du profil). Par défaut : tous.
+    nutrients: list[str] = field(default_factory=lambda: list(ALL_KEYS))
 
     def to_dict(self) -> dict:
         return {
@@ -85,16 +130,25 @@ class Profile:
             "sex": self.sex,
             "pregnant": self.pregnant,
             "breastfeeding": self.breastfeeding,
+            "nutrients": list(self.nutrients),
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "Profile":
+        # Un ancien profil sans "nutrients" (ou avec des clés inconnues) retombe sur « tous ».
+        chosen = [k for k in d.get("nutrients", []) if k in ALL_KEYS]
         return cls(
             age=int(d.get("age", 30)),
             sex=d.get("sex", "F"),
             pregnant=bool(d.get("pregnant", False)),
             breastfeeding=bool(d.get("breastfeeding", False)),
+            nutrients=chosen or list(ALL_KEYS),
         )
+
+
+def selected_nutrients(profile: Profile) -> list[dict]:
+    """Nutriments choisis par l'utilisateur, dans l'ordre de NUTRIENTS."""
+    return [n for n in NUTRIENTS if n["key"] in profile.nutrients]
 
 
 def _band_value(bands: list[tuple[int, float]], age: int) -> float:

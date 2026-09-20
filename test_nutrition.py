@@ -95,3 +95,59 @@ def test_real_ciqual_csv_if_present():
     assert hits and all("lentille" in normalize(h) for h in hits)
     # les plus courts d'abord
     assert len(hits[0]) <= len(hits[-1])
+
+
+# --- choix des nutriments dans le profil -------------------------------------
+from nutrition import ALL_KEYS, selected_nutrients
+
+
+def test_profile_defaults_to_all_nutrients():
+    assert Profile().nutrients == ALL_KEYS
+    # ancien profil sauvegardé sans le champ "nutrients"
+    old = {"age": 30, "sex": "F", "pregnant": False, "breastfeeding": False}
+    assert Profile.from_dict(old).nutrients == ALL_KEYS
+
+
+def test_profile_nutrients_roundtrip_and_order():
+    p = Profile(nutrients=["zinc", "fer"])
+    p2 = Profile.from_dict(p.to_dict())
+    assert p2.nutrients == ["zinc", "fer"]
+    # l'affichage suit l'ordre de NUTRIENTS, pas l'ordre du clic
+    assert [n["key"] for n in selected_nutrients(p2)] == ["fer", "zinc"]
+
+
+def test_profile_ignores_unknown_and_empty_selection():
+    assert Profile.from_dict({"nutrients": ["fer", "inconnu"]}).nutrients == ["fer"]
+    assert Profile.from_dict({"nutrients": []}).nutrients == ALL_KEYS
+
+
+# --- vitamines ---------------------------------------------------------------
+def test_every_nutrient_has_reference_and_group():
+    from nutrition import NUTRIENTS, REFERENCES
+
+    for n in NUTRIENTS:
+        assert n["key"] in REFERENCES, n["key"]
+        assert n["group"] in ("Minéraux", "Vitamines")
+        assert set(REFERENCES[n["key"]]) >= {"H", "F"}
+    assert {n["group"] for n in NUTRIENTS} == {"Minéraux", "Vitamines"}
+
+
+def test_vitamin_references_depend_on_profile():
+    woman = recommended_intakes(Profile(age=30, sex="F"))
+    man = recommended_intakes(Profile(age=30, sex="H"))
+    assert woman["vitamine_c"] < man["vitamine_c"]
+    assert woman["vitamine_d"] == man["vitamine_d"] == 15
+    assert recommended_intakes(Profile(age=30, sex="F", pregnant=True))["vitamine_b9"] == 600
+    assert recommended_intakes(Profile(age=30, sex="F", breastfeeding=True))["vitamine_a"] == 1300
+
+
+def test_real_csv_has_vitamins():
+    path = Path(__file__).parent / "foods.csv"
+    if not path.exists():
+        pytest.skip("foods.csv non généré")
+    foods = load_foods(path)
+    kiwi = foods[normalize("Kiwi, chair sans peau, avec pépins, cru")]["per100"]
+    assert kiwi["vitamine_c"] > 50
+    smoked = foods[normalize("Saumon fumé")]["per100"]
+    assert smoked["vitamine_d"] > 3
+    assert smoked["vitamine_b12"] > 2

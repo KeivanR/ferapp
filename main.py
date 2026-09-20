@@ -22,6 +22,7 @@ from nutrition import (
     parse_grams,
     recommended_intakes,
     search_foods,
+    selected_nutrients,
 )
 from storage import load_state, save_state
 
@@ -71,6 +72,39 @@ def main(page: ft.Page):
         breastfeeding = ft.Switch(label="Allaitement", value=current.breastfeeding)
         female_options = ft.Column([pregnant, breastfeeding], visible=current.sex == "F")
 
+        # Choix multiple des nutriments à suivre (un cercle par nutriment coché)
+        nutrient_checks = {
+            n["key"]: ft.Checkbox(
+                label=f"{n['label']} ({n['unit']})",
+                value=n["key"] in current.nutrients,
+                on_change=lambda e: clear_nutrient_error(),
+            )
+            for n in NUTRIENTS
+        }
+        nutrient_error = ft.Text("", color=ft.Colors.RED_700, size=12, visible=False)
+
+        # Cases regroupées par famille (Minéraux, Vitamines, ...) dans l'ordre de NUTRIENTS
+        grouped_checks = ft.Column(spacing=0)
+        last_group = None
+        for n in NUTRIENTS:
+            if n["group"] != last_group:
+                last_group = n["group"]
+                grouped_checks.controls.append(
+                    ft.Text(last_group, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_700)
+                )
+            grouped_checks.controls.append(nutrient_checks[n["key"]])
+
+        def clear_nutrient_error():
+            if nutrient_error.visible:
+                nutrient_error.visible = False
+                page.update()
+
+        def set_all_nutrients(value: bool):
+            for c in nutrient_checks.values():
+                c.value = value
+            nutrient_error.visible = False
+            page.update()
+
         def on_sex_change(e):
             female_options.visible = sex.value == "F"
             page.update()
@@ -92,11 +126,18 @@ def main(page: ft.Page):
                 age_field.error = "Entre un âge valide (1-120)"
                 page.update()
                 return
+            chosen = [k for k, c in nutrient_checks.items() if c.value]
+            if not chosen:
+                nutrient_error.value = "Choisis au moins un nutriment"
+                nutrient_error.visible = True
+                page.update()
+                return
             profile = Profile(
                 age=age,
                 sex=sex.value,
                 pregnant=sex.value == "F" and pregnant.value,
                 breastfeeding=sex.value == "F" and breastfeeding.value,
+                nutrients=chosen,
             )
             state["profile"] = profile.to_dict()
             save_state(state)
@@ -119,6 +160,16 @@ def main(page: ft.Page):
                             ft.Text("Sexe"),
                             sex,
                             female_options,
+                            ft.Divider(height=20),
+                            ft.Text("Nutriments à suivre", size=18, weight=ft.FontWeight.W_600),
+                            ft.Row(
+                                [
+                                    ft.TextButton("Tout cocher", on_click=lambda e: set_all_nutrients(True)),
+                                    ft.TextButton("Tout décocher", on_click=lambda e: set_all_nutrients(False)),
+                                ]
+                            ),
+                            grouped_checks,
+                            nutrient_error,
                             ft.Container(height=10),
                             ft.FilledButton("Enregistrer", on_click=save_profile),
                         ],
@@ -134,6 +185,7 @@ def main(page: ft.Page):
     def show_main():
         profile = get_profile()
         recommended = recommended_intakes(profile)
+        shown = selected_nutrients(profile)
 
         rings_row = ft.Row(wrap=True, alignment=ft.MainAxisAlignment.CENTER, spacing=6, run_spacing=16)
         entries_col = ft.Column(spacing=0)
@@ -212,7 +264,7 @@ def main(page: ft.Page):
             ratios = completion(totals, recommended)
             rings_row.controls = [
                 build_ring(n, ratios[n["key"]], totals[n["key"]], recommended[n["key"]])
-                for n in NUTRIENTS
+                for n in shown
             ]
             entries_col.controls = [
                 ft.ListTile(

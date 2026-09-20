@@ -35,16 +35,16 @@ python build_foods.py "Table Ciqual 2025_FR_2025_11_03.xlsx"
 ```
 
 Nettoyage : `-` = manquant (compté 0), `traces` et `< x` = 0 (choix prudent), virgules décimales converties.
-Les aliments sans aucun minéral suivi renseigné sont écartés. Les vitamines A, D, E, K1, C, B9, B12
-sont déjà dans le CSV, prêtes à être ajoutées.
+Les aliments sans aucun minéral suivi renseigné sont écartés. Les vitamines A, D, E, K1, C, B9 et B12
+sont aussi extraites (14 nutriments au total, choisis par l'utilisateur dans son profil).
 
-## Ajouter un nutriment (ex. vitamine A)
+## Ajouter un nutriment
 
-1. Vérifie que la colonne existe dans `foods.csv` (les vitamines y sont déjà ; sinon ajoute-la dans `COLUMNS` de `build_foods.py`).
-2. Ajoute une entrée dans `NUTRIENTS` (`nutrition.py`).
+1. Vérifie que la colonne existe dans `foods.csv` (sinon ajoute-la dans `COLUMNS` de `build_foods.py` et relance la conversion).
+2. Ajoute une entrée dans `NUTRIENTS` (`nutrition.py`), avec son `group` (« Minéraux », « Vitamines »...).
 3. Ajoute ses apports de référence dans `REFERENCES` (`nutrition.py`).
 
-Les cercles se génèrent automatiquement à partir de `NUTRIENTS`.
+La case du profil et le cercle de la page principale se génèrent automatiquement.
 
 ## Avertissement
 
