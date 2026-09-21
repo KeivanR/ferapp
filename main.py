@@ -19,7 +19,11 @@ from nutrition import (
     daily_totals,
     find_food,
     load_foods,
+    merge_foods,
+    normalize,
     parse_grams,
+    parse_nutrient_value,
+    recipe_per100,
     recommended_intakes,
     search_foods,
     selected_nutrients,
@@ -27,10 +31,11 @@ from nutrition import (
 )
 from storage import load_state, save_state
 
-FOODS = load_foods(Path(__file__).parent / "foods.csv")
+OFFICIAL_FOODS = load_foods(Path(__file__).parent / "foods.csv")
 
 COLOR_TODO = ft.Colors.ORANGE_600
 COLOR_DONE = ft.Colors.GREEN_600
+COLOR_CUSTOM = ft.Colors.ORANGE_800  # aliments ajoutés par l'utilisateur (hors base officielle)
 
 
 def fmt(value: float) -> str:
@@ -49,12 +54,77 @@ def main(page: ft.Page):
     page.theme_mode = ft.ThemeMode.LIGHT
 
     state = load_state()
+    # Base officielle + aliments personnalisés ; modifiée sur place quand on en ajoute un.
+    foods = merge_foods(OFFICIAL_FOODS, state["custom_foods"])
 
     def today_key() -> str:
         return datetime.date.today().isoformat()
 
     def get_profile() -> Profile:
         return Profile.from_dict(state["profile"])
+
+    def suggestion_tile(name: str, on_pick) -> ft.ListTile:
+        """Une suggestion ; en orange si l'aliment ne vient pas de la base officielle."""
+        custom = bool(foods.get(normalize(name), {}).get("custom"))
+        return ft.ListTile(
+            title=ft.Text(
+                f"{name} · perso" if custom else name,
+                color=COLOR_CUSTOM if custom else None,
+                weight=ft.FontWeight.W_600 if custom else None,
+            ),
+            dense=True,
+            on_click=lambda ev: on_pick(name),
+        )
+
+    # Champs de saisie partagés : formulaire d'ajout, fenêtre de modification, recettes.
+    def make_food_input(on_submit, **kwargs) -> tuple[ft.TextField, ft.Column]:
+        """Champ « Aliment » + colonne de suggestions."""
+        suggestions = ft.Column(spacing=0)
+        field = ft.TextField(label="Aliment", hint_text="ex : lentilles cuites", **kwargs)
+
+        def pick(name: str):
+            field.value = name
+            field.error = None
+            suggestions.controls = []
+            page.update()
+
+        def on_change(e):
+            field.error = None
+            matches = search_foods(field.value or "", foods)
+            # Pas de suggestion si la saisie correspond déjà exactement à un aliment.
+            if len(matches) == 1 and matches[0].lower() == (field.value or "").strip().lower():
+                matches = []
+            suggestions.controls = [suggestion_tile(m, pick) for m in matches]
+            page.update()
+
+        field.on_change = on_change
+        field.on_submit = on_submit
+        return field, suggestions
+
+    def make_grams_input(on_submit, **kwargs) -> ft.TextField:
+        field = ft.TextField(label="Grammes", keyboard_type=ft.KeyboardType.NUMBER, **kwargs)
+
+        def on_change(e):
+            if field.error:
+                field.error = None
+                page.update()
+
+        field.on_change = on_change
+        field.on_submit = on_submit
+        return field
+
+    def validate(food_input: ft.TextField, grams_input: ft.TextField):
+        """Retourne (aliment, grammes) ou None en affichant les erreurs sous les champs."""
+        food = find_food(food_input.value or "", foods)
+        grams = parse_grams(grams_input.value or "")
+        if food is None:
+            food_input.error = "Choisis un aliment dans la liste"
+        if grams is None:
+            grams_input.error = "Invalide"
+        if food is None or grams is None:
+            page.update()
+            return None
+        return food, grams
 
     # ------------------------------------------------------------------ #
     # Page profil
@@ -181,6 +251,221 @@ def main(page: ft.Page):
         )
 
     # ------------------------------------------------------------------ #
+    # Page « Nouvel aliment » : saisie manuelle des nutriments ou recette
+    # ------------------------------------------------------------------ #
+    def show_custom_food():
+        def clear_error(field: ft.TextField):
+            if field.error:
+                field.error = None
+                page.update()
+
+        name_field = ft.TextField(
+            label="Nom de l'aliment",
+            hint_text="ex : soupe de lentilles maison",
+            on_change=lambda e: clear_error(name_field),
+        )
+
+        # --- Mode 1 : teneurs saisies à la main (pour 100 g) ---
+        value_fields = {
+            n["key"]: ft.TextField(
+                label=f"{n['label']} ({n['unit']})",
+                width=170,
+                keyboard_type=ft.KeyboardType.NUMBER,
+            )
+            for n in NUTRIENTS
+        }
+        for f in value_fields.values():
+            f.on_change = lambda e, f=f: clear_error(f)
+        manual_children: list[ft.Control] = [
+            ft.Text("Teneur pour 100 g d'aliment (case vide = 0)", color=ft.Colors.GREY_700)
+        ]
+        for group in dict.fromkeys(n["group"] for n in NUTRIENTS):
+            manual_children.append(ft.Text(group, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_700))
+            manual_children.append(
+                ft.Row(
+                    [value_fields[n["key"]] for n in NUTRIENTS if n["group"] == group],
+                    wrap=True,
+                    spacing=10,
+                    run_spacing=10,
+                )
+            )
+        manual_col = ft.Column(manual_children, spacing=8)
+
+        # --- Mode 2 : recette = liste d'aliments avec leur grammage ---
+        ingredients: list[dict] = []
+        ing_food, ing_suggestions = make_food_input(lambda e: add_ingredient(), expand=True)
+        ing_food.label = "Ingrédient"
+        ing_grams = make_grams_input(lambda e: add_ingredient(), width=110)
+        ingredients_col = ft.Column(spacing=0)
+        total_text = ft.Text("Aucun ingrédient pour l'instant.", color=ft.Colors.GREY_700)
+        recipe_error = ft.Text("", color=ft.Colors.RED_700, size=12, visible=False)
+        final_weight = ft.TextField(
+            label="Poids final du plat (g), facultatif",
+            keyboard_type=ft.KeyboardType.NUMBER,
+        )
+        final_weight.on_change = lambda e: clear_error(final_weight)
+
+        def refresh_ingredients():
+            ingredients_col.controls = [
+                ft.ListTile(
+                    title=ft.Text(f"{ing['food']} — {fmt(ing['grams'])} g"),
+                    trailing=ft.IconButton(
+                        ft.Icons.DELETE_OUTLINE,
+                        tooltip="Retirer",
+                        on_click=lambda ev, idx=idx: remove_ingredient(idx),
+                    ),
+                    dense=True,
+                )
+                for idx, ing in enumerate(ingredients)
+            ]
+            total = sum(i["grams"] for i in ingredients)
+            total_text.value = (
+                f"Poids total des ingrédients : {fmt(total)} g" if ingredients else "Aucun ingrédient pour l'instant."
+            )
+            page.update()
+
+        def add_ingredient(e=None):
+            checked = validate(ing_food, ing_grams)
+            if checked is None:
+                return
+            food, grams = checked
+            ingredients.append({"food": food["name"], "grams": grams})
+            ing_food.value = ""
+            ing_grams.value = ""
+            ing_suggestions.controls = []
+            recipe_error.visible = False
+            refresh_ingredients()
+
+        def remove_ingredient(idx: int):
+            if 0 <= idx < len(ingredients):
+                ingredients.pop(idx)
+                refresh_ingredients()
+
+        recipe_col = ft.Column(
+            [
+                ft.Text("Ajoute les aliments qui composent la recette", color=ft.Colors.GREY_700),
+                ft.Row([ing_food, ing_grams], vertical_alignment=ft.CrossAxisAlignment.START),
+                ing_suggestions,
+                ft.OutlinedButton("Ajouter l'ingrédient", icon=ft.Icons.ADD, on_click=add_ingredient),
+                ingredients_col,
+                total_text,
+                recipe_error,
+                final_weight,
+                ft.Text(
+                    "Vide = somme des ingrédients. À remplir si le plat perd ou gagne de l'eau à la cuisson.",
+                    size=12,
+                    color=ft.Colors.GREY_700,
+                ),
+            ],
+            spacing=8,
+            visible=False,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+        )
+
+        def on_mode_change(e):
+            manual_col.visible = mode.value == "manual"
+            recipe_col.visible = mode.value == "recipe"
+            page.update()
+
+        mode = ft.RadioGroup(
+            value="manual",
+            on_change=on_mode_change,
+            content=ft.Column(
+                [
+                    ft.Radio(value="manual", label="Saisir les nutriments"),
+                    ft.Radio(value="recipe", label="Recette (à partir d'autres aliments)"),
+                ],
+                spacing=0,
+            ),
+        )
+
+        def save_custom(e=None):
+            name = " ".join((name_field.value or "").split())
+            ok = True
+            if not name:
+                name_field.error = "Donne un nom à l'aliment"
+                ok = False
+            elif normalize(name) in foods:
+                name_field.error = "Un aliment porte déjà ce nom"
+                ok = False
+
+            food: dict = {"name": name}
+            if mode.value == "manual":
+                per100 = {}
+                for n in NUTRIENTS:
+                    value = parse_nutrient_value(value_fields[n["key"]].value or "")
+                    if value is None:
+                        value_fields[n["key"]].error = "Invalide"
+                        ok = False
+                    else:
+                        per100[n["key"]] = value
+                food.update(kind="manual", per100=per100)
+            else:
+                weight = None
+                if (final_weight.value or "").strip():
+                    weight = parse_grams(final_weight.value)
+                    if weight is None:
+                        final_weight.error = "Invalide"
+                        ok = False
+                if not ingredients:
+                    recipe_error.value = "Ajoute au moins un ingrédient"
+                    recipe_error.visible = True
+                    ok = False
+                if ok:
+                    food.update(
+                        kind="recipe",
+                        ingredients=[dict(i) for i in ingredients],
+                        final_weight=weight,
+                        per100=recipe_per100(ingredients, foods, weight),
+                    )
+            if not ok:
+                page.update()
+                return
+
+            state["custom_foods"].append(food)
+            save_state(state)
+            foods.clear()
+            foods.update(merge_foods(OFFICIAL_FOODS, state["custom_foods"]))
+            show_main()
+
+        page.clean()
+        page.add(
+            ft.SafeArea(
+                ft.Container(
+                    padding=ft.Padding.only(left=16, right=16, top=8, bottom=24),
+                    content=ft.Column(
+                        [
+                            ft.Row(
+                                [
+                                    ft.IconButton(ft.Icons.ARROW_BACK, tooltip="Retour", on_click=lambda e: show_main()),
+                                    ft.Text("Nouvel aliment", size=24, weight=ft.FontWeight.BOLD),
+                                ]
+                            ),
+                            ft.Text(
+                                "Il apparaîtra en orange dans les suggestions : il ne vient pas de la base officielle.",
+                                color=COLOR_CUSTOM,
+                                size=13,
+                            ),
+                            name_field,
+                            mode,
+                            manual_col,
+                            recipe_col,
+                            ft.Row(
+                                [
+                                    ft.TextButton("Annuler", on_click=lambda e: show_main()),
+                                    ft.FilledButton("Enregistrer l'aliment", on_click=save_custom),
+                                ],
+                                alignment=ft.MainAxisAlignment.END,
+                            ),
+                        ],
+                        spacing=12,
+                        horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                    ),
+                )
+            )
+        )
+
+    # ------------------------------------------------------------------ #
     # Page principale
     # ------------------------------------------------------------------ #
     def show_main():
@@ -190,59 +475,6 @@ def main(page: ft.Page):
 
         rings_row = ft.Row(wrap=True, alignment=ft.MainAxisAlignment.CENTER, spacing=6, run_spacing=16)
         entries_col = ft.Column(spacing=0)
-
-        # Champs de saisie réutilisés par le formulaire d'ajout et la fenêtre de modification.
-        def make_food_input(on_submit, **kwargs) -> tuple[ft.TextField, ft.Column]:
-            """Champ « Aliment » + colonne de suggestions."""
-            suggestions = ft.Column(spacing=0)
-            field = ft.TextField(label="Aliment", hint_text="ex : lentilles cuites", **kwargs)
-
-            def pick(name: str):
-                field.value = name
-                field.error = None
-                suggestions.controls = []
-                page.update()
-
-            def on_change(e):
-                field.error = None
-                matches = search_foods(field.value or "", FOODS)
-                # Pas de suggestion si la saisie correspond déjà exactement à un aliment.
-                if len(matches) == 1 and matches[0].lower() == (field.value or "").strip().lower():
-                    matches = []
-                suggestions.controls = [
-                    ft.ListTile(title=ft.Text(m), dense=True, on_click=lambda ev, m=m: pick(m))
-                    for m in matches
-                ]
-                page.update()
-
-            field.on_change = on_change
-            field.on_submit = on_submit
-            return field, suggestions
-
-        def make_grams_input(on_submit, **kwargs) -> ft.TextField:
-            field = ft.TextField(label="Grammes", keyboard_type=ft.KeyboardType.NUMBER, **kwargs)
-
-            def on_change(e):
-                if field.error:
-                    field.error = None
-                    page.update()
-
-            field.on_change = on_change
-            field.on_submit = on_submit
-            return field
-
-        def validate(food_input: ft.TextField, grams_input: ft.TextField):
-            """Retourne (aliment, grammes) ou None en affichant les erreurs sous les champs."""
-            food = find_food(food_input.value or "", FOODS)
-            grams = parse_grams(grams_input.value or "")
-            if food is None:
-                food_input.error = "Choisis un aliment dans la liste"
-            if grams is None:
-                grams_input.error = "Invalide"
-            if food is None or grams is None:
-                page.update()
-                return None
-            return food, grams
 
         food_field, suggestions_col = make_food_input(lambda e: add_entry(), expand=True)
         grams_field = make_grams_input(lambda e: add_entry(), width=110)
@@ -296,7 +528,7 @@ def main(page: ft.Page):
 
         def refresh():
             entries = entries_today()
-            totals = daily_totals(entries, FOODS)
+            totals = daily_totals(entries, foods)
             ratios = completion(totals, recommended)
             rings_row.controls = [
                 build_ring(n, ratios[n["key"]], totals[n["key"]], recommended[n["key"]])
@@ -309,7 +541,7 @@ def main(page: ft.Page):
 
         def build_entry_tile(i: int, e: dict) -> ft.Control:
             """Une ligne du journal : aliment, grammage et nutriment le plus apporté."""
-            top = top_nutrient(e, FOODS, recommended, shown)
+            top = top_nutrient(e, foods, recommended, shown)
             if top:
                 detail = (
                     f"{top['label']} : {fmt(top['amount'])} {top['unit']} "
@@ -422,7 +654,17 @@ def main(page: ft.Page):
                             ),
                             ft.Row([food_field, grams_field], vertical_alignment=ft.CrossAxisAlignment.START),
                             suggestions_col,
-                            ft.FilledButton("Ajouter", icon=ft.Icons.ADD, on_click=add_entry),
+                            ft.Row(
+                                [
+                                    ft.FilledButton("Ajouter", icon=ft.Icons.ADD, on_click=add_entry),
+                                    ft.TextButton(
+                                        "Nouvel aliment",
+                                        icon=ft.Icons.ADD_CIRCLE_OUTLINE,
+                                        on_click=lambda e: show_custom_food(),
+                                    ),
+                                ],
+                                wrap=True,
+                            ),
                             ft.Divider(height=24),
                             rings_row,
                             ft.Divider(height=24),

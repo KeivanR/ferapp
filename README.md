@@ -20,6 +20,10 @@ pytest                        # tests de la logique
 - **Ajouter** : tape l'aliment (suggestions pendant la frappe) et le grammage, puis « Ajouter ».
 - **Nutriment principal** : sous chaque entrée s'affiche le nutriment (parmi ceux choisis dans le profil) dont elle
   couvre la plus grande part de l'apport journalier recommandé, avec la quantité ingérée.
+- **Nouvel aliment** : le bouton « Nouvel aliment » crée un aliment personnalisé, soit en saisissant ses
+  teneurs pour 100 g (case vide = 0), soit comme une recette (liste d'aliments avec leurs grammages, poids final
+  facultatif). Il apparaît en orange (« · perso ») et en tête des suggestions ; le nom doit être unique.
+  Une recette est calculée à l'enregistrement : modifier plus tard un de ses ingrédients ne la met pas à jour.
 - **Modifier** : touche une entrée (ou le crayon) pour changer l'aliment et/ou le grammage ; la poubelle la supprime.
 
 ## Fichiers
@@ -31,7 +35,7 @@ pytest                        # tests de la logique
 | `foods.csv` | Base Ciqual convertie (valeurs pour 100 g), générée par `build_foods.py` |
 | `build_foods.py` | Convertit la table Ciqual `.xlsx` en `foods.csv` (à lancer sur ton ordinateur) |
 | `foods_demo.csv` | Mini-base de 45 aliments utilisée par les tests |
-| `storage.py` | Sauvegarde du profil et du journal (JSON local) |
+| `storage.py` | Sauvegarde du profil, du journal et des aliments personnalisés (JSON local) |
 | `test_nutrition.py` | Tests unitaires de la logique |
 
 ## Mettre à jour la base Ciqual

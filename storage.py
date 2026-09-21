@@ -18,11 +18,18 @@ def _data_file() -> Path:
 
 
 def load_state() -> dict:
-    """{"profile": {...} | None, "journal": {"YYYY-MM-DD": [{"food": str, "grams": float}]}}"""
+    """{"profile": {...} | None,
+    "journal": {"YYYY-MM-DD": [{"food": str, "grams": float}]},
+    "custom_foods": [{"name": str, "per100": {...}, "kind": "manual" | "recipe", ...}]}"""
     try:
-        return json.loads(_data_file().read_text(encoding="utf-8"))
+        state = json.loads(_data_file().read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
-        return {"profile": None, "journal": {}}
+        state = {}
+    # Un ancien fichier sans certaines clés reste utilisable.
+    state.setdefault("profile", None)
+    state.setdefault("journal", {})
+    state.setdefault("custom_foods", [])
+    return state
 
 
 def save_state(state: dict) -> None:

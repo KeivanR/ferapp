@@ -210,3 +210,83 @@ def test_real_csv_vitamin_coverage_and_lentils():
         assert sum(1 for r in rows if r[col] != "") > 2000, col
     lentils = next(r for r in rows if r["aliment"].startswith("Lentille verte, bouillie"))
     assert float(lentils["vitamine_b9_ug"]) > 0
+
+
+# --- aliments personnalisés ---------------------------------------------------
+def test_official_foods_are_not_custom():
+    assert all(f["custom"] is False for f in FOODS.values())
+
+
+def test_parse_nutrient_value():
+    from nutrition import parse_nutrient_value
+
+    assert parse_nutrient_value("") == 0.0
+    assert parse_nutrient_value("  ") == 0.0
+    assert parse_nutrient_value("3,5") == pytest.approx(3.5)
+    assert parse_nutrient_value("0") == 0.0
+    assert parse_nutrient_value("abc") is None
+    assert parse_nutrient_value("-2") is None
+
+
+def test_recipe_per100_sums_and_scales():
+    from nutrition import recipe_per100
+
+    ings = [
+        {"food": "lentilles cuites", "grams": 200},  # fer 6.6 mg
+        {"food": "boudin noir", "grams": 100},  # fer 22 mg
+    ]
+    per100 = recipe_per100(ings, FOODS)
+    assert per100["fer"] == pytest.approx((6.6 + 22) / 300 * 100)
+    # poids final plus faible (évaporation) -> plat plus concentré
+    assert recipe_per100(ings, FOODS, final_weight=250)["fer"] == pytest.approx((6.6 + 22) / 250 * 100)
+    assert set(per100) == set(ALL_KEYS)
+
+
+def test_recipe_per100_errors():
+    from nutrition import recipe_per100
+
+    with pytest.raises(ValueError):
+        recipe_per100([], FOODS)
+    with pytest.raises(ValueError):
+        recipe_per100([{"food": "inconnu", "grams": 10}], FOODS)
+
+
+def test_merge_foods_flags_custom_and_computes_entries():
+    from nutrition import merge_foods
+
+    custom = [{"name": "Barre maison", "kind": "manual", "per100": {"fer": 5.0, "calcium": 100.0}}]
+    merged = merge_foods(FOODS, custom)
+    food = merged[normalize("barre maison")]
+    assert food["custom"] is True
+    assert food["per100"]["fer"] == 5.0
+    assert food["per100"]["zinc"] == 0.0  # nutriment non renseigné -> 0
+    totals = daily_totals([{"food": "Barre maison", "grams": 50}], merged)
+    assert totals["fer"] == pytest.approx(2.5)
+    assert normalize("barre maison") not in FOODS  # la base officielle n'est pas modifiée
+
+
+def test_custom_foods_come_first_in_search():
+    from nutrition import merge_foods
+
+    custom = [{"name": "Lentilles de ma grand-mère, bien longues", "kind": "manual", "per100": {}}]
+    merged = merge_foods(FOODS, custom)
+    hits = search_foods("lentilles", merged)
+    assert hits[0] == "Lentilles de ma grand-mère, bien longues"
+    assert merged[normalize(hits[0])]["custom"] is True
+    assert all(not merged[normalize(h)]["custom"] for h in hits[1:])
+
+
+def test_storage_defaults_and_old_files(tmp_path, monkeypatch):
+    import json
+
+    import storage
+
+    monkeypatch.setenv("FLET_APP_STORAGE_DATA", str(tmp_path))
+    assert storage.load_state() == {"profile": None, "journal": {}, "custom_foods": []}
+    # ancien fichier sans "custom_foods"
+    (tmp_path / "state.json").write_text(json.dumps({"profile": {"age": 30}, "journal": {}}))
+    state = storage.load_state()
+    assert state["custom_foods"] == [] and state["profile"] == {"age": 30}
+    state["custom_foods"].append({"name": "x", "per100": {}})
+    storage.save_state(state)
+    assert storage.load_state()["custom_foods"][0]["name"] == "x"

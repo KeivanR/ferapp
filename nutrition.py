@@ -185,7 +185,7 @@ def normalize(text: str) -> str:
 
 
 def load_foods(path: str | Path) -> dict[str, dict]:
-    """Charge le CSV. Retourne {nom_normalisé: {"name": nom, "per100": {clé: valeur}}}."""
+    """Charge le CSV. Retourne {nom_normalisé: {"name": nom, "per100": {clé: valeur}, "custom": False}}."""
     foods: dict[str, dict] = {}
     with open(path, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
@@ -194,23 +194,28 @@ def load_foods(path: str | Path) -> dict[str, dict]:
             for n in NUTRIENTS:
                 raw = (row.get(n["col"]) or "").strip().replace(",", ".")
                 per100[n["key"]] = float(raw) if raw else 0.0
-            foods[normalize(name)] = {"name": name, "per100": per100}
+            foods[normalize(name)] = {"name": name, "per100": per100, "custom": False}
     return foods
 
 
 def search_foods(query: str, foods: dict[str, dict], limit: int = 8) -> list[str]:
     """Noms d'aliments correspondant à la saisie : début de nom d'abord, puis « contient
-    tous les mots » ; dans chaque groupe, les noms les plus courts (les plus génériques) en premier."""
+    tous les mots ». Dans chaque groupe, tes aliments personnalisés passent en premier, puis
+    les noms les plus courts (les plus génériques)."""
     q = normalize(query)
     if not q:
         return []
     starts, contains = [], []
     for norm, food in foods.items():
         if norm.startswith(q):
-            starts.append(food["name"])
+            starts.append(food)
         elif all(word in norm for word in q.split()):
-            contains.append(food["name"])
-    return (sorted(starts, key=lambda s: (len(s), s)) + sorted(contains, key=lambda s: (len(s), s)))[:limit]
+            contains.append(food)
+
+    def rank(food: dict):
+        return (not food.get("custom"), len(food["name"]), food["name"])
+
+    return [f["name"] for f in sorted(starts, key=rank) + sorted(contains, key=rank)][:limit]
 
 
 def find_food(name: str, foods: dict[str, dict]) -> dict | None:
@@ -281,3 +286,52 @@ def daily_totals(entries: list[dict], foods: dict[str, dict]) -> dict[str, float
 def completion(totals: dict[str, float], recommended: dict[str, float]) -> dict[str, float]:
     """Ratio apport / recommandé (peut dépasser 1.0 ; l'affichage plafonne le cercle à 100 %)."""
     return {k: (totals[k] / recommended[k] if recommended[k] else 0.0) for k in totals}
+
+
+# --------------------------------------------------------------------------- #
+# Aliments personnalisés (saisie manuelle ou recette)
+# --------------------------------------------------------------------------- #
+def parse_nutrient_value(text: str) -> float | None:
+    """Teneur saisie à la main : '' -> 0.0, '3,5' -> 3.5, None si invalide ou négative."""
+    cleaned = text.strip().replace(",", ".")
+    if not cleaned:
+        return 0.0
+    try:
+        value = float(cleaned)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+
+def recipe_per100(
+    ingredients: list[dict], foods: dict[str, dict], final_weight: float | None = None
+) -> dict[str, float]:
+    """Teneurs pour 100 g d'une recette {"food": nom, "grams": g}, tous nutriments confondus.
+
+    `final_weight` : poids du plat fini (ex. après cuisson) ; par défaut, somme des ingrédients.
+    """
+    if not ingredients:
+        raise ValueError("La recette doit contenir au moins un ingrédient")
+    for ing in ingredients:
+        if normalize(ing["food"]) not in foods:
+            raise ValueError(f"Ingrédient inconnu : {ing['food']}")
+    weight = final_weight or sum(i["grams"] for i in ingredients)
+    if weight <= 0:
+        raise ValueError("Le poids final doit être positif")
+    totals = daily_totals(ingredients, foods)
+    return {k: v / weight * 100.0 for k, v in totals.items()}
+
+
+def merge_foods(official: dict[str, dict], custom_foods: list[dict]) -> dict[str, dict]:
+    """Base officielle + aliments personnalisés (repérés par "custom": True).
+
+    Un aliment personnalisé enregistré : {"name", "per100", "kind": "manual" | "recipe", ...}.
+    """
+    merged = dict(official)
+    for cf in custom_foods:
+        merged[normalize(cf["name"])] = {
+            "name": cf["name"],
+            "per100": {k: float(cf["per100"].get(k, 0.0)) for k in ALL_KEYS},
+            "custom": True,
+        }
+    return merged
