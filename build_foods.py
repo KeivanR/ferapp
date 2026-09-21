@@ -20,23 +20,26 @@ from pathlib import Path
 
 import openpyxl
 
-# clé CSV -> expression régulière sur l'en-tête Ciqual nettoyé (retours à la ligne -> espaces)
+# clé CSV -> alternatives, essayées dans l'ordre : la première qui a une valeur l'emporte.
+# Une alternative est une expression régulière sur l'en-tête Ciqual nettoyé (retours à la ligne
+# -> espaces), ou un tuple d'expressions dont les valeurs sont additionnées (ex. D2 + D3).
 COLUMNS = {
-    "fer_mg": r"^Fer \(mg",
-    "calcium_mg": r"^Calcium \(mg",
-    "magnesium_mg": r"^Magnésium \(mg",
-    "zinc_mg": r"^Zinc \(mg",
-    "potassium_mg": r"^Potassium \(mg",
-    "iode_ug": r"^Iode \(µg",
-    "selenium_ug": r"^Sélénium \(µg",
-    # Pas encore utilisés par l'app, prêts pour une prochaine version :
-    "vitamine_a_ug": r"^Activité vitaminique A",
-    "vitamine_d_ug": r"^Vitamine D \(µg",
-    "vitamine_e_mg": r"^Vitamine E \(mg",
-    "vitamine_k1_ug": r"^Vitamine K1 \(µg",
-    "vitamine_c_mg": r"^Vitamine C \(mg",
-    "vitamine_b9_ug": r"^Vitamine B9 ou Folates totaux \(µg",
-    "vitamine_b12_ug": r"^Vitamine B12 \(µg",
+    "fer_mg": [r"^Fer \(mg"],
+    "calcium_mg": [r"^Calcium \(mg"],
+    "magnesium_mg": [r"^Magnésium \(mg"],
+    "zinc_mg": [r"^Zinc \(mg"],
+    "potassium_mg": [r"^Potassium \(mg"],
+    "iode_ug": [r"^Iode \(µg"],
+    "selenium_ug": [r"^Sélénium \(µg"],
+    "vitamine_a_ug": [r"^Activité vitaminique A"],
+    "vitamine_d_ug": [r"^Vitamine D \(µg", (r"^Vitamine D2 \(", r"^Vitamine D3 \(")],
+    # alpha-tocophérol et "vitamine E" sont renseignés pour des aliments différents
+    "vitamine_e_mg": [r"^Alpha-tocophérol \(vitamine E\)", r"^Vitamine E \(mg"],
+    "vitamine_k1_ug": [r"^Vitamine K1 \(µg"],
+    "vitamine_c_mg": [r"^Vitamine C \(mg"],
+    # équivalents folates (DFE, comme la référence EFSA) d'abord, sinon folates totaux
+    "vitamine_b9_ug": [r"^Vitamine B9 ou Folates totaux, équivalents folates", r"^Vitamine B9 ou Folates totaux \(µg"],
+    "vitamine_b12_ug": [r"^Vitamine B12 \(µg"],
 }
 MINERALS = list(COLUMNS)[:7]  # colonnes utilisées par l'app aujourd'hui
 
@@ -55,6 +58,15 @@ def parse_value(raw) -> float | None:
     return float(text.replace(",", "."))
 
 
+def resolve(row, alternatives: list[list[int]]) -> float | None:
+    """Première alternative ayant une valeur ; plusieurs colonnes dans une alternative = somme."""
+    for cols in alternatives:
+        parts = [v for v in (parse_value(row[c]) for c in cols) if v is not None]
+        if parts:
+            return sum(parts)
+    return None
+
+
 def clean_header(h) -> str:
     return " ".join(str(h or "").split())
 
@@ -66,12 +78,17 @@ def convert(xlsx_path: str | Path, csv_path: str | Path) -> dict:
         rows = list(wb[wb.sheetnames[0]].iter_rows(values_only=True))
     headers = [clean_header(h) for h in rows[0]]
 
-    idx = {}
-    for key, pattern in COLUMNS.items():
+    def find_col(pattern: str) -> int:
         found = [i for i, h in enumerate(headers) if re.search(pattern, h)]
         if len(found) != 1:
-            raise SystemExit(f"Colonne '{key}' : {len(found)} correspondances pour {pattern!r}")
-        idx[key] = found[0]
+            raise SystemExit(f"{len(found)} colonnes pour {pattern!r} (attendu : 1)")
+        return found[0]
+
+    # clé -> liste d'alternatives, chacune = liste d'index de colonnes (plusieurs = somme)
+    idx = {
+        key: [[find_col(p) for p in ((alt,) if isinstance(alt, str) else alt)] for alt in alts]
+        for key, alts in COLUMNS.items()
+    }
     name_i = headers.index("alim_nom_fr")
     code_i = headers.index("alim_code")
 
@@ -81,7 +98,7 @@ def convert(xlsx_path: str | Path, csv_path: str | Path) -> dict:
         w.writerow(["alim_code", "aliment", *COLUMNS])
         for r in rows[1:]:
             name = (r[name_i] or "").strip()
-            values = [parse_value(r[idx[k]]) for k in COLUMNS]
+            values = [resolve(r, idx[k]) for k in COLUMNS]
             # Inutile si aucun minéral suivi n'est renseigné.
             if not name or all(v is None for v in values[: len(MINERALS)]):
                 dropped += 1

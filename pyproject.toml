@@ -1,0 +1,10 @@
+[project]
+name = "ferapp"
+version = "0.1.0"
+description = "Suivi des apports en minéraux pour éviter les carences"
+requires-python = ">=3.10"
+dependencies = ["flet==1.0.0"]
+
+[tool.flet]
+product = "LehiTequi"
+org = "com.example"

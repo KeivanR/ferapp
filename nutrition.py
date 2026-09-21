@@ -246,6 +246,30 @@ def entry_nutrients(entry: dict, foods: dict[str, dict]) -> dict[str, float]:
     return {k: v * factor for k, v in food["per100"].items()}
 
 
+def top_nutrient(
+    entry: dict,
+    foods: dict[str, dict],
+    recommended: dict[str, float],
+    nutrients: list[dict],
+) -> dict | None:
+    """Nutriment (parmi `nutrients`) que cette entrée apporte le plus.
+
+    Les quantités brutes ne sont pas comparables entre elles (mg, µg, et le potassium
+    gagnerait toujours) : on compare donc la part de l'apport journalier recommandé.
+    Retourne {"key", "label", "unit", "amount", "share"} ou None si aucune donnée.
+    """
+    amounts = entry_nutrients(entry, foods)
+    best = None
+    for n in nutrients:
+        amount, rec = amounts[n["key"]], recommended[n["key"]]
+        if amount <= 0 or not rec:
+            continue
+        share = amount / rec
+        if best is None or share > best["share"]:
+            best = {"key": n["key"], "label": n["label"], "unit": n["unit"], "amount": amount, "share": share}
+    return best
+
+
 def daily_totals(entries: list[dict], foods: dict[str, dict]) -> dict[str, float]:
     totals = {n["key"]: 0.0 for n in NUTRIENTS}
     for e in entries:

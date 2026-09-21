@@ -23,6 +23,7 @@ from nutrition import (
     recommended_intakes,
     search_foods,
     selected_nutrients,
+    top_nutrient,
 )
 from storage import load_state, save_state
 
@@ -189,27 +190,62 @@ def main(page: ft.Page):
 
         rings_row = ft.Row(wrap=True, alignment=ft.MainAxisAlignment.CENTER, spacing=6, run_spacing=16)
         entries_col = ft.Column(spacing=0)
-        suggestions_col = ft.Column(spacing=0)
 
-        food_field = ft.TextField(
-            label="Aliment",
-            hint_text="ex : lentilles cuites",
-            expand=True,
-            on_change=lambda e: update_suggestions(),
-            on_submit=lambda e: add_entry(None),
-        )
-        grams_field = ft.TextField(
-            label="Grammes",
-            width=110,
-            keyboard_type=ft.KeyboardType.NUMBER,
-            on_change=lambda e: clear_grams_error(),
-            on_submit=lambda e: add_entry(None),
-        )
+        # Champs de saisie réutilisés par le formulaire d'ajout et la fenêtre de modification.
+        def make_food_input(on_submit, **kwargs) -> tuple[ft.TextField, ft.Column]:
+            """Champ « Aliment » + colonne de suggestions."""
+            suggestions = ft.Column(spacing=0)
+            field = ft.TextField(label="Aliment", hint_text="ex : lentilles cuites", **kwargs)
 
-        def clear_grams_error():
-            if grams_field.error:
-                grams_field.error = None
+            def pick(name: str):
+                field.value = name
+                field.error = None
+                suggestions.controls = []
                 page.update()
+
+            def on_change(e):
+                field.error = None
+                matches = search_foods(field.value or "", FOODS)
+                # Pas de suggestion si la saisie correspond déjà exactement à un aliment.
+                if len(matches) == 1 and matches[0].lower() == (field.value or "").strip().lower():
+                    matches = []
+                suggestions.controls = [
+                    ft.ListTile(title=ft.Text(m), dense=True, on_click=lambda ev, m=m: pick(m))
+                    for m in matches
+                ]
+                page.update()
+
+            field.on_change = on_change
+            field.on_submit = on_submit
+            return field, suggestions
+
+        def make_grams_input(on_submit, **kwargs) -> ft.TextField:
+            field = ft.TextField(label="Grammes", keyboard_type=ft.KeyboardType.NUMBER, **kwargs)
+
+            def on_change(e):
+                if field.error:
+                    field.error = None
+                    page.update()
+
+            field.on_change = on_change
+            field.on_submit = on_submit
+            return field
+
+        def validate(food_input: ft.TextField, grams_input: ft.TextField):
+            """Retourne (aliment, grammes) ou None en affichant les erreurs sous les champs."""
+            food = find_food(food_input.value or "", FOODS)
+            grams = parse_grams(grams_input.value or "")
+            if food is None:
+                food_input.error = "Choisis un aliment dans la liste"
+            if grams is None:
+                grams_input.error = "Invalide"
+            if food is None or grams is None:
+                page.update()
+                return None
+            return food, grams
+
+        food_field, suggestions_col = make_food_input(lambda e: add_entry(), expand=True)
+        grams_field = make_grams_input(lambda e: add_entry(), width=110)
 
         def entries_today() -> list[dict]:
             return state["journal"].setdefault(today_key(), [])
@@ -266,51 +302,48 @@ def main(page: ft.Page):
                 build_ring(n, ratios[n["key"]], totals[n["key"]], recommended[n["key"]])
                 for n in shown
             ]
-            entries_col.controls = [
-                ft.ListTile(
-                    title=ft.Text(f"{e['food']} — {fmt(e['grams'])} g"),
-                    trailing=ft.IconButton(
-                        ft.Icons.DELETE_OUTLINE,
-                        tooltip="Supprimer",
-                        on_click=lambda ev, i=i: delete_entry(i),
-                    ),
-                    dense=True,
-                )
-                for i, e in enumerate(entries)
-            ] or [ft.Text("Rien d'ajouté pour l'instant.", color=ft.Colors.GREY_600)]
-            page.update()
-
-        def update_suggestions():
-            food_field.error = None
-            matches = search_foods(food_field.value or "", FOODS)
-            # Pas de suggestion si la saisie correspond déjà exactement à un aliment.
-            if len(matches) == 1 and matches[0].lower() == (food_field.value or "").strip().lower():
-                matches = []
-            suggestions_col.controls = [
-                ft.ListTile(title=ft.Text(m), dense=True, on_click=lambda ev, m=m: pick(m))
-                for m in matches
+            entries_col.controls = [build_entry_tile(i, e) for i, e in enumerate(entries)] or [
+                ft.Text("Rien d'ajouté pour l'instant.", color=ft.Colors.GREY_600)
             ]
             page.update()
 
-        def pick(name: str):
-            food_field.value = name
-            suggestions_col.controls = []
-            page.update()
+        def build_entry_tile(i: int, e: dict) -> ft.Control:
+            """Une ligne du journal : aliment, grammage et nutriment le plus apporté."""
+            top = top_nutrient(e, FOODS, recommended, shown)
+            if top:
+                detail = (
+                    f"{top['label']} : {fmt(top['amount'])} {top['unit']} "
+                    f"({top['share'] * 100:.0f} % de l'apport du jour)"
+                )
+            else:
+                detail = "Aucune donnée pour les nutriments choisis"
+            return ft.ListTile(
+                title=ft.Text(f"{e['food']} — {fmt(e['grams'])} g"),
+                subtitle=ft.Text(detail, size=12, color=ft.Colors.GREEN_800 if top else ft.Colors.GREY_600),
+                trailing=ft.Row(
+                    [
+                        ft.IconButton(
+                            ft.Icons.EDIT_OUTLINED,
+                            tooltip="Modifier",
+                            on_click=lambda ev, i=i: open_edit(i),
+                        ),
+                        ft.IconButton(
+                            ft.Icons.DELETE_OUTLINE,
+                            tooltip="Supprimer",
+                            on_click=lambda ev, i=i: delete_entry(i),
+                        ),
+                    ],
+                    tight=True,
+                    spacing=0,
+                ),
+                on_click=lambda ev, i=i: open_edit(i),
+            )
 
-        def add_entry(e):
-            food = find_food(food_field.value or "", FOODS)
-            grams = parse_grams(grams_field.value or "")
-            ok = True
-            if food is None:
-                food_field.error = "Choisis un aliment dans la liste"
-                ok = False
-            if grams is None:
-                grams_field.error = "Invalide"
-                ok = False
-            if not ok:
-                page.update()
+        def add_entry(e=None):
+            checked = validate(food_field, grams_field)
+            if checked is None:
                 return
-            grams_field.error = None
+            food, grams = checked
             entries_today().append({"food": food["name"], "grams": grams})
             save_state(state)
             food_field.value = ""
@@ -324,6 +357,41 @@ def main(page: ft.Page):
                 entries.pop(index)
                 save_state(state)
                 refresh()
+
+        def open_edit(index: int):
+            """Fenêtre pour corriger l'aliment et/ou le grammage d'une entrée du jour."""
+            entries = entries_today()
+            if not 0 <= index < len(entries):
+                return
+            entry = entries[index]
+
+            edit_food, edit_suggestions = make_food_input(lambda e: save_edit(), width=300)
+            edit_food.value = entry["food"]
+            edit_grams = make_grams_input(lambda e: save_edit(), width=300)
+            edit_grams.value = f"{entry['grams']:g}"
+
+            def save_edit(e=None):
+                checked = validate(edit_food, edit_grams)
+                if checked is None:
+                    return
+                food, grams = checked
+                entries[index] = {"food": food["name"], "grams": grams}
+                save_state(state)
+                page.pop_dialog()
+                refresh()
+
+            page.show_dialog(
+                ft.AlertDialog(
+                    modal=True,
+                    title=ft.Text("Modifier l'entrée"),
+                    content=ft.Column([edit_food, edit_suggestions, edit_grams], tight=True, width=300),
+                    scrollable=True,
+                    actions=[
+                        ft.TextButton("Annuler", on_click=lambda e: page.pop_dialog()),
+                        ft.FilledButton("Enregistrer", on_click=save_edit),
+                    ],
+                )
+            )
 
         page.clean()
         page.add(

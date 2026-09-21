@@ -151,3 +151,62 @@ def test_real_csv_has_vitamins():
     smoked = foods[normalize("Saumon fumé")]["per100"]
     assert smoked["vitamine_d"] > 3
     assert smoked["vitamine_b12"] > 2
+
+
+# --- nutriment le plus apporté par une entrée --------------------------------
+def test_top_nutrient_uses_share_of_recommendation_not_raw_amount():
+    from nutrition import NUTRIENTS, selected_nutrients, top_nutrient
+
+    profile = Profile(age=30, sex="F")
+    rec = recommended_intakes(profile)
+    entry = {"food": "lentilles cuites", "grams": 100}
+    top = top_nutrient(entry, FOODS, rec, NUTRIENTS)
+    # le potassium a la plus grosse quantité brute (369 mg) mais le fer pèse plus (3,3/16)
+    assert top["key"] == "fer"
+    assert top["amount"] == pytest.approx(3.3)
+    assert top["unit"] == "mg"
+    assert top["share"] == pytest.approx(3.3 / 16)
+
+
+def test_top_nutrient_only_among_chosen_nutrients_and_scales_with_grams():
+    from nutrition import selected_nutrients, top_nutrient
+
+    profile = Profile(age=30, sex="F", nutrients=["calcium", "potassium"])
+    rec = recommended_intakes(profile)
+    chosen = selected_nutrients(profile)
+    top = top_nutrient({"food": "lentilles cuites", "grams": 200}, FOODS, rec, chosen)
+    assert top["key"] == "potassium"  # 738/3500 > 38/950
+    assert top["amount"] == pytest.approx(738)
+
+
+def test_top_nutrient_none_without_data():
+    from nutrition import NUTRIENTS, top_nutrient
+
+    rec = recommended_intakes(Profile())
+    assert top_nutrient({"food": "inconnu", "grams": 100}, FOODS, rec, NUTRIENTS) is None
+    assert top_nutrient({"food": "lentilles cuites", "grams": 100}, FOODS, rec, []) is None
+
+
+# --- colonnes de repli à la conversion ---------------------------------------
+def test_resolve_uses_fallback_and_sums():
+    from build_foods import resolve
+
+    row = ["-", "50,5", "1,5", "2"]
+    assert resolve(row, [[0], [1]]) == pytest.approx(50.5)  # 1re vide -> repli
+    assert resolve(row, [[1], [0]]) == pytest.approx(50.5)  # 1re renseignée l'emporte
+    assert resolve(row, [[2, 3]]) == pytest.approx(3.5)  # somme (ex. D2 + D3)
+    assert resolve(["-", None], [[0], [1]]) is None
+    assert resolve(["< 0,5", "9"], [[0], [1]]) == 0  # "< x" = 0 mais bien renseigné
+
+
+def test_real_csv_vitamin_coverage_and_lentils():
+    path = Path(__file__).parent / "foods.csv"
+    if not path.exists():
+        pytest.skip("foods.csv non généré")
+    import csv
+
+    rows = list(csv.DictReader(open(path, encoding="utf-8")))
+    for col in ("vitamine_b9_ug", "vitamine_e_mg", "vitamine_d_ug"):
+        assert sum(1 for r in rows if r[col] != "") > 2000, col
+    lentils = next(r for r in rows if r["aliment"].startswith("Lentille verte, bouillie"))
+    assert float(lentils["vitamine_b9_ug"]) > 0

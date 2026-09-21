@@ -15,6 +15,13 @@ flet build apk                # APK autonome (nécessite le SDK Flutter/Android,
 pytest                        # tests de la logique
 ```
 
+## Utilisation
+
+- **Ajouter** : tape l'aliment (suggestions pendant la frappe) et le grammage, puis « Ajouter ».
+- **Nutriment principal** : sous chaque entrée s'affiche le nutriment (parmi ceux choisis dans le profil) dont elle
+  couvre la plus grande part de l'apport journalier recommandé, avec la quantité ingérée.
+- **Modifier** : touche une entrée (ou le crayon) pour changer l'aliment et/ou le grammage ; la poubelle la supprime.
+
 ## Fichiers
 
 | Fichier | Rôle |
@@ -34,6 +41,7 @@ pip install openpyxl
 python build_foods.py "Table Ciqual 2025_FR_2025_11_03.xlsx"
 ```
 
+Colonnes de repli : vitamine B9 = équivalents folates (DFE) sinon folates totaux ; vitamine E = alpha-tocophérol sinon « vitamine E » ; vitamine D = D sinon D2 + D3.
 Nettoyage : `-` = manquant (compté 0), `traces` et `< x` = 0 (choix prudent), virgules décimales converties.
 Les aliments sans aucun minéral suivi renseigné sont écartés. Les vitamines A, D, E, K1, C, B9 et B12
 sont aussi extraites (14 nutriments au total, choisis par l'utilisateur dans son profil).
