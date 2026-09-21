@@ -1,8 +1,10 @@
 # Nutri-Suivi (prototype)
 
 App mobile en Python (Flet) : tu saisis ce que tu manges (aliment + grammes), l'app
-additionne les minéraux ingérés dans la journée et affiche un cercle de complétion par
+additionne les minéraux et vitamines ingérés dans la journée et affiche un cercle de complétion par
 nutriment (100 % = apport recommandé pour ton profil atteint).
+
+Nécessite **Python 3.11 ou plus** (lecture de `config.toml` avec `tomllib`).
 
 ## Lancer
 
@@ -12,11 +14,15 @@ python main.py                # fenêtre bureau
 flet run --web main.py        # dans le navigateur
 flet run --android main.py    # sur ton téléphone via l'app "Flet" (Play Store / App Store)
 flet build apk                # APK autonome (nécessite le SDK Flutter/Android, non testé ici)
-pytest                        # tests de la logique
+pytest                        # tests de la logique et de la configuration
 ```
 
 ## Utilisation
 
+- **Profil** : âge, sexe et, pour une femme, sa **situation** (un seul choix) : non réglée, réglée, abondamment
+  réglée, enceinte ou allaitement. Le bouton « Enregistrer » est en haut (barre fixe, toujours visible) et en bas.
+  Sans réponse (ancien profil, nouveau profil), la situation proposée est « réglée » entre 12 et 50 ans
+  (réglable dans `config.toml`), « non réglée » sinon.
 - **Ajouter** : tape l'aliment (suggestions pendant la frappe) et le grammage, puis « Ajouter ».
 - **Nutriment principal** : sous chaque entrée s'affiche le nutriment (parmi ceux choisis dans le profil) dont elle
   couvre la plus grande part de l'apport journalier recommandé, avec la quantité ingérée.
@@ -26,17 +32,61 @@ pytest                        # tests de la logique
   Une recette est calculée à l'enregistrement : modifier plus tard un de ses ingrédients ne la met pas à jour.
 - **Modifier** : touche une entrée (ou le crayon) pour changer l'aliment et/ou le grammage ; la poubelle la supprime.
 
+## Configuration : `config.toml`
+
+Tout ce qui se règle sans toucher au code est dans `config.toml` :
+
+| Section | Contenu |
+| --- | --- |
+| `[app]` | titre, fichier d'aliments (`foods.csv`), nombre de suggestions affichées |
+| `[profile]` | âge par défaut, âges min/max acceptés, tranche d'âge où « règles » est coché par défaut |
+| `[display]` | taille et épaisseur des cercles, couleurs (cercle à compléter / complet / aliment perso) |
+| `[foods_build]` | réglages de `build_foods.py` : groupe requis, traitement de `< x` et de `traces` |
+| `[nutrients.<clé>]` | un bloc par nutriment : nom, unité, groupe, colonne du CSV, colonnes Ciqual, **apports de référence** |
+
+Les références sont des tranches d'âge `[[âge_max_inclus, valeur], ...]` :
+
+```toml
+[nutrients.fer.reference]
+homme = [[3, 7], [10, 11], [17, 13], [200, 11]]
+femme = [[3, 7], [10, 11], [17, 13], [200, 11]]     # non réglée (et valeur de repli)
+femme_regles = [[3, 7], [10, 11], [200, 16]]        # réglée (facultatif)
+femme_regles_abondantes = [[3, 7], [10, 11], [200, 20]]  # abondamment réglée (facultatif)
+grossesse = 16                                      # valeur unique (facultatif)
+allaitement = 10                                    # valeur unique (facultatif)
+```
+
+Pour une femme, l'app prend la première clé définie pour le nutriment :
+
+| Situation | Clés essayées dans l'ordre |
+| --- | --- |
+| Non réglée | `femme` |
+| Réglée | `femme_regles`, `femme` |
+| Abondamment réglée | `femme_regles_abondantes`, `femme_regles`, `femme` |
+| Enceinte | `grossesse`, `femme` |
+| Allaitement | `allaitement`, `femme` |
+
+Un homme utilise toujours `homme`. Un nutriment qui n'a pas de valeur spécifique à une situation retombe donc sur
+`femme` : il n'y a rien à renseigner pour ceux qui ne changent pas.
+
+Le fichier est vérifié au démarrage : une faute (clé inconnue, âges dans le désordre, tranche qui s'arrête avant
+`age_max`, colonne CSV en double...) donne un message qui cite le nutriment concerné, et l'app refuse de démarrer
+plutôt que d'afficher de faux chiffres. Pour tester un autre fichier : `NUTRI_CONFIG=/chemin/autre.toml python main.py`.
+
 ## Fichiers
 
 | Fichier | Rôle |
 | --- | --- |
-| `main.py` | Interface : page profil + page principale (saisie, cercles, liste des repas) |
+| `config.toml` | **Configuration** : références, nutriments, affichage, options (à éditer à la main) |
+| `config.py` | Lecture et validation de `config.toml` |
+| `main.py` | Interface : page profil + page principale (saisie, cercles, liste des repas) + nouvel aliment |
 | `nutrition.py` | Logique : chargement du CSV, apports de référence, calculs |
 | `foods.csv` | Base Ciqual convertie (valeurs pour 100 g), générée par `build_foods.py` |
 | `build_foods.py` | Convertit la table Ciqual `.xlsx` en `foods.csv` (à lancer sur ton ordinateur) |
 | `foods_demo.csv` | Mini-base de 45 aliments utilisée par les tests |
 | `storage.py` | Sauvegarde du profil, du journal et des aliments personnalisés (JSON local) |
 | `test_nutrition.py` | Tests unitaires de la logique |
+| `test_config.py` | Tests de la validation de `config.toml` |
 
 ## Mettre à jour la base Ciqual
 
@@ -45,21 +95,22 @@ pip install openpyxl
 python build_foods.py "Table Ciqual 2025_FR_2025_11_03.xlsx"
 ```
 
-Colonnes de repli : vitamine B9 = équivalents folates (DFE) sinon folates totaux ; vitamine E = alpha-tocophérol sinon « vitamine E » ; vitamine D = D sinon D2 + D3.
-Nettoyage : `-` = manquant (compté 0), `traces` et `< x` = 0 (choix prudent), virgules décimales converties.
-Les aliments sans aucun minéral suivi renseigné sont écartés. Les vitamines A, D, E, K1, C, B9 et B12
-sont aussi extraites (14 nutriments au total, choisis par l'utilisateur dans son profil).
+La colonne Ciqual qui alimente chaque nutriment se règle dans `config.toml` (`ciqual = [...]`, expressions
+régulières sur l'en-tête, essayées dans l'ordre ; une sous-liste = valeurs additionnées). Repli actuel :
+vitamine B9 = équivalents folates (DFE) sinon folates totaux ; vitamine E = alpha-tocophérol sinon « vitamine E » ;
+vitamine D = D sinon D2 + D3.
+Nettoyage : `-` = manquant (compté 0), virgules décimales converties ; `traces` et `< x` = 0 par défaut
+(choix prudent, modifiable dans `[foods_build]`). Les aliments sans aucun minéral renseigné sont écartés.
 
 ## Ajouter un nutriment
 
-1. Vérifie que la colonne existe dans `foods.csv` (sinon ajoute-la dans `COLUMNS` de `build_foods.py` et relance la conversion).
-2. Ajoute une entrée dans `NUTRIENTS` (`nutrition.py`), avec son `group` (« Minéraux », « Vitamines »...).
-3. Ajoute ses apports de référence dans `REFERENCES` (`nutrition.py`).
+1. Ajoute un bloc `[nutrients.<clé>]` dans `config.toml` (nom, unité, groupe, `csv_column`, `ciqual`, références).
+2. Relance `build_foods.py` pour créer la colonne dans `foods.csv`.
 
-La case du profil et le cercle de la page principale se génèrent automatiquement.
+Aucun changement de code : la case du profil et le cercle de la page principale se génèrent automatiquement.
 
 ## Avertissement
 
-Les aliments viennent de la vraie table Ciqual, mais les apports de référence de `nutrition.py`
+Les aliments viennent de la vraie table Ciqual, mais les apports de référence de `config.toml`
 sont des ordres de grandeur saisis pour le prototype (inspirés EFSA/ANSES) : à vérifier avant tout usage réel.
 Cette app n'est pas un dispositif médical.

@@ -1,10 +1,11 @@
 """Logique métier de l'application (aucune dépendance à Flet, donc testable seule).
 
 - base d'aliments chargée depuis foods.csv (valeurs pour 100 g)
-- apports de référence par nutriment selon le profil (âge, sexe, grossesse, allaitement)
+- apports de référence par nutriment selon le profil (âge, sexe, situation de la femme : règles, grossesse, allaitement),
+  lus dans config.toml
 - calcul des apports du jour et du taux de complétion
 
-IMPORTANT : les valeurs de référence ci-dessous sont des ordres de grandeur inspirés
+IMPORTANT : les valeurs de référence de config.toml sont des ordres de grandeur inspirés
 des références EFSA / ANSES pour un premier prototype. Vérifie-les avant tout usage
 réel et ne les utilise pas comme avis médical.
 """
@@ -16,120 +17,60 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# --------------------------------------------------------------------------- #
-# Nutriments suivis : clé (= nom de colonne du CSV sans l'unité), libellé, unité
-# --------------------------------------------------------------------------- #
-NUTRIENTS = [
-    {"key": "fer", "label": "Fer", "unit": "mg", "col": "fer_mg", "group": "Minéraux"},
-    {"key": "calcium", "label": "Calcium", "unit": "mg", "col": "calcium_mg", "group": "Minéraux"},
-    {"key": "magnesium", "label": "Magnésium", "unit": "mg", "col": "magnesium_mg", "group": "Minéraux"},
-    {"key": "zinc", "label": "Zinc", "unit": "mg", "col": "zinc_mg", "group": "Minéraux"},
-    {"key": "potassium", "label": "Potassium", "unit": "mg", "col": "potassium_mg", "group": "Minéraux"},
-    {"key": "iode", "label": "Iode", "unit": "µg", "col": "iode_ug", "group": "Minéraux"},
-    {"key": "selenium", "label": "Sélénium", "unit": "µg", "col": "selenium_ug", "group": "Minéraux"},
-    {"key": "vitamine_a", "label": "Vitamine A", "unit": "µg", "col": "vitamine_a_ug", "group": "Vitamines"},
-    {"key": "vitamine_d", "label": "Vitamine D", "unit": "µg", "col": "vitamine_d_ug", "group": "Vitamines"},
-    {"key": "vitamine_e", "label": "Vitamine E", "unit": "mg", "col": "vitamine_e_mg", "group": "Vitamines"},
-    {"key": "vitamine_k", "label": "Vitamine K", "unit": "µg", "col": "vitamine_k1_ug", "group": "Vitamines"},
-    {"key": "vitamine_c", "label": "Vitamine C", "unit": "mg", "col": "vitamine_c_mg", "group": "Vitamines"},
-    {"key": "vitamine_b9", "label": "Vitamine B9", "unit": "µg", "col": "vitamine_b9_ug", "group": "Vitamines"},
-    {"key": "vitamine_b12", "label": "Vitamine B12", "unit": "µg", "col": "vitamine_b12_ug", "group": "Vitamines"},
-]
+from config import SCALAR_KEYS, load_config
 
 # --------------------------------------------------------------------------- #
-# Apports de référence. Chaque tranche d'âge est (âge_max_inclus, valeur).
-# "H" = homme, "F" = femme. "grossesse" / "allaitement" : valeur unique (adulte),
-# à défaut on retombe sur la valeur "F" correspondant à l'âge.
+# Nutriments et apports de référence : tout vient de config.toml
 # --------------------------------------------------------------------------- #
-_BOTH = lambda bands: {"H": bands, "F": bands}  # noqa: E731
-
-REFERENCES: dict[str, dict] = {
-    "fer": {
-        "H": [(3, 7), (10, 11), (17, 13), (200, 11)],
-        "F": [(3, 7), (10, 11), (17, 16), (50, 16), (200, 11)],
-        "grossesse": 16,
-        "allaitement": 10,
-    },
-    "calcium": {
-        **_BOTH([(3, 450), (10, 800), (17, 1150), (24, 1000), (200, 950)]),
-    },
-    "magnesium": {
-        "H": [(3, 170), (10, 230), (14, 250), (17, 350), (200, 350)],
-        "F": [(3, 170), (10, 230), (14, 250), (17, 300), (200, 300)],
-    },
-    "zinc": {
-        "H": [(3, 4.3), (6, 5.5), (10, 7.4), (14, 10.7), (17, 11.9), (200, 11.0)],
-        "F": [(3, 4.3), (6, 5.5), (10, 7.4), (14, 10.7), (17, 10.2), (200, 8.9)],
-        "grossesse": 10.5,
-        "allaitement": 11.8,
-    },
-    "potassium": {
-        **_BOTH([(3, 800), (6, 1800), (10, 2000), (14, 2900), (17, 3500), (200, 3500)]),
-        "allaitement": 4000,
-    },
-    "iode": {
-        **_BOTH([(10, 90), (14, 120), (200, 150)]),
-        "grossesse": 200,
-        "allaitement": 200,
-    },
-    "selenium": {
-        **_BOTH([(3, 15), (6, 30), (10, 45), (14, 60), (200, 70)]),
-        "allaitement": 85,
-    },
-    # --- Vitamines (ordres de grandeur inspirés des références EFSA) ---
-    "vitamine_a": {  # µg d'équivalents rétinol
-        "H": [(3, 250), (6, 300), (10, 400), (14, 600), (200, 750)],
-        "F": [(3, 250), (6, 300), (10, 400), (14, 600), (200, 650)],
-        "grossesse": 700,
-        "allaitement": 1300,
-    },
-    "vitamine_d": {  # µg, apport adéquat identique pour tous à partir de 1 an
-        **_BOTH([(200, 15)]),
-    },
-    "vitamine_e": {  # mg d'alpha-tocophérol
-        "H": [(3, 6), (10, 9), (14, 13), (200, 13)],
-        "F": [(3, 6), (10, 9), (14, 11), (200, 11)],
-    },
-    "vitamine_k": {  # µg (K1)
-        **_BOTH([(3, 12), (6, 20), (10, 30), (14, 45), (17, 65), (200, 70)]),
-    },
-    "vitamine_c": {  # mg
-        "H": [(3, 20), (6, 30), (10, 45), (14, 70), (17, 100), (200, 110)],
-        "F": [(3, 20), (6, 30), (10, 45), (14, 70), (17, 90), (200, 95)],
-        "grossesse": 105,
-        "allaitement": 155,
-    },
-    "vitamine_b9": {  # µg (folates)
-        **_BOTH([(3, 120), (6, 140), (10, 200), (14, 270), (200, 330)]),
-        "grossesse": 600,
-        "allaitement": 500,
-    },
-    "vitamine_b12": {  # µg
-        **_BOTH([(6, 1.5), (10, 2.5), (14, 3.5), (200, 4)]),
-        "grossesse": 4.5,
-        "allaitement": 5,
-    },
-}
-
+CONFIG = load_config()
+NUTRIENTS: list[dict] = CONFIG["nutrients"]  # {"key", "label", "unit", "group", "col", "ciqual"}
+REFERENCES: dict[str, dict] = CONFIG["references"]  # par nutriment : homme, femme, femme_regles, femme_regles_abondantes, grossesse, allaitement
+SEARCH_LIMIT: int = CONFIG["app"]["suggestions_max"]
+AGE_MIN: int = CONFIG["profile"]["age_min"]
+AGE_MAX: int = CONFIG["profile"]["age_max"]
+PERIOD_AGE_RANGE: tuple[int, int] = tuple(CONFIG["profile"]["menstruation_age_range"])
 
 ALL_KEYS = [n["key"] for n in NUTRIENTS]
 
 
+# Situations possibles pour une femme (une seule à la fois). Pour chacune : le libellé affiché et
+# la liste des clés de référence de config.toml, essayées dans l'ordre (la première définie pour
+# le nutriment est utilisée ; « femme » existe toujours, c'est le repli).
+WOMAN_STATUSES: dict[str, dict] = {
+    "non_reglee": {"label": "Non réglée", "refs": ("femme",)},
+    "reglee": {"label": "Réglée", "refs": ("femme_regles", "femme")},
+    "abondante": {
+        "label": "Abondamment réglée",
+        "refs": ("femme_regles_abondantes", "femme_regles", "femme"),
+    },
+    "enceinte": {"label": "Enceinte", "refs": ("grossesse", "femme")},
+    "allaitement": {"label": "Allaitement", "refs": ("allaitement", "femme")},
+}
+
+
 @dataclass
 class Profile:
-    age: int = 30
+    age: int = CONFIG["profile"]["default_age"]
     sex: str = "F"  # "F" ou "H"
-    pregnant: bool = False
-    breastfeeding: bool = False
+    # Situation d'une femme (clé de WOMAN_STATUSES). None = pas renseignée : on déduit de l'âge
+    # (« réglée » dans menstruation_age_range, sinon « non réglée »). Ignoré pour un homme.
+    status: str | None = None
     # Clés des nutriments affichés (choix multiple du profil). Par défaut : tous.
     nutrients: list[str] = field(default_factory=lambda: list(ALL_KEYS))
+
+    def effective_status(self) -> str | None:
+        """Situation utilisée pour les calculs : None pour un homme."""
+        if self.sex != "F":
+            return None
+        if self.status in WOMAN_STATUSES:
+            return self.status
+        return "reglee" if PERIOD_AGE_RANGE[0] <= self.age <= PERIOD_AGE_RANGE[1] else "non_reglee"
 
     def to_dict(self) -> dict:
         return {
             "age": self.age,
             "sex": self.sex,
-            "pregnant": self.pregnant,
-            "breastfeeding": self.breastfeeding,
+            "status": self.status,
             "nutrients": list(self.nutrients),
         }
 
@@ -137,11 +78,21 @@ class Profile:
     def from_dict(cls, d: dict) -> "Profile":
         # Un ancien profil sans "nutrients" (ou avec des clés inconnues) retombe sur « tous ».
         chosen = [k for k in d.get("nutrients", []) if k in ALL_KEYS]
+        status = d.get("status")
+        if status not in WOMAN_STATUSES:
+            # Anciens profils (cases séparées) : allaitement > grossesse > règles > estimation.
+            if d.get("breastfeeding"):
+                status = "allaitement"
+            elif d.get("pregnant"):
+                status = "enceinte"
+            elif d.get("menstruating") is not None:
+                status = "reglee" if d["menstruating"] else "non_reglee"
+            else:
+                status = None
         return cls(
-            age=int(d.get("age", 30)),
+            age=int(d.get("age", CONFIG["profile"]["default_age"])),
             sex=d.get("sex", "F"),
-            pregnant=bool(d.get("pregnant", False)),
-            breastfeeding=bool(d.get("breastfeeding", False)),
+            status=status,
             nutrients=chosen or list(ALL_KEYS),
         )
 
@@ -158,18 +109,27 @@ def _band_value(bands: list[tuple[int, float]], age: int) -> float:
     return bands[-1][1]
 
 
-def recommended_intakes(profile: Profile) -> dict[str, float]:
-    """Apport de référence journalier pour chaque nutriment, selon le profil."""
+def recommended_intakes(
+    profile: Profile,
+    references: dict[str, dict] | None = None,
+    nutrients: list[dict] | None = None,
+) -> dict[str, float]:
+    """Apport de référence journalier pour chaque nutriment, selon le profil.
+
+    Pour une femme, la clé de référence dépend de sa situation (WOMAN_STATUSES) : on prend la
+    première définie pour le nutriment, « femme » en dernier recours.
+    `references` / `nutrients` : pour tester avec une autre configuration.
+    """
+    references = REFERENCES if references is None else references
+    nutrients = NUTRIENTS if nutrients is None else nutrients
     out: dict[str, float] = {}
-    for n in NUTRIENTS:
-        ref = REFERENCES[n["key"]]
-        value = _band_value(ref[profile.sex], profile.age)
-        if profile.sex == "F":
-            # Allaitement prioritaire sur grossesse si les deux sont cochés.
-            if profile.breastfeeding and "allaitement" in ref:
-                value = ref["allaitement"]
-            elif profile.pregnant and "grossesse" in ref:
-                value = ref["grossesse"]
+    for n in nutrients:
+        ref = references[n["key"]]
+        if profile.sex == "H":
+            value = _band_value(ref["homme"], profile.age)
+        else:
+            key = next(k for k in WOMAN_STATUSES[profile.effective_status()]["refs"] if k in ref)
+            value = ref[key] if key in SCALAR_KEYS else _band_value(ref[key], profile.age)
         out[n["key"]] = value
     return out
 
@@ -198,7 +158,7 @@ def load_foods(path: str | Path) -> dict[str, dict]:
     return foods
 
 
-def search_foods(query: str, foods: dict[str, dict], limit: int = 8) -> list[str]:
+def search_foods(query: str, foods: dict[str, dict], limit: int = SEARCH_LIMIT) -> list[str]:
     """Noms d'aliments correspondant à la saisie : début de nom d'abord, puis « contient
     tous les mots ». Dans chaque groupe, tes aliments personnalisés passent en premier, puis
     les noms les plus courts (les plus génériques)."""

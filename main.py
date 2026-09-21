@@ -8,13 +8,19 @@ Construire l'APK :          flet build apk
 from __future__ import annotations
 
 import datetime
+from dataclasses import replace
 from pathlib import Path
 
 import flet as ft
 
 from nutrition import (
+    AGE_MAX,
+    AGE_MIN,
+    CONFIG,
     NUTRIENTS,
     Profile,
+    REFERENCES,
+    WOMAN_STATUSES,
     completion,
     daily_totals,
     find_food,
@@ -31,11 +37,14 @@ from nutrition import (
 )
 from storage import load_state, save_state
 
-OFFICIAL_FOODS = load_foods(Path(__file__).parent / "foods.csv")
+OFFICIAL_FOODS = load_foods(Path(__file__).parent / CONFIG["app"]["foods_file"])
 
-COLOR_TODO = ft.Colors.ORANGE_600
-COLOR_DONE = ft.Colors.GREEN_600
-COLOR_CUSTOM = ft.Colors.ORANGE_800  # aliments ajoutés par l'utilisateur (hors base officielle)
+# Réglages d'affichage : voir [display] dans config.toml
+COLOR_TODO = CONFIG["display"]["color_todo"]
+COLOR_DONE = CONFIG["display"]["color_done"]
+COLOR_CUSTOM = CONFIG["display"]["color_custom_food"]  # aliments hors base officielle
+RING_SIZE = CONFIG["display"]["ring_size"]
+RING_STROKE = CONFIG["display"]["ring_stroke_width"]
 
 
 def fmt(value: float) -> str:
@@ -48,7 +57,7 @@ def fmt(value: float) -> str:
 
 
 def main(page: ft.Page):
-    page.title = "Nutri-Suivi"
+    page.title = CONFIG["app"]["title"]
     page.padding = 0
     page.scroll = ft.ScrollMode.AUTO
     page.theme_mode = ft.ThemeMode.LIGHT
@@ -130,7 +139,8 @@ def main(page: ft.Page):
     # Page profil
     # ------------------------------------------------------------------ #
     def show_profile():
-        current = Profile.from_dict(state["profile"]) if state.get("profile") else Profile()
+        has_profile = bool(state.get("profile"))
+        current = Profile.from_dict(state["profile"]) if has_profile else Profile()
 
         age_field = ft.TextField(
             label="Âge",
@@ -139,9 +149,28 @@ def main(page: ft.Page):
             input_filter=ft.NumbersOnlyInputFilter(),
             width=120,
         )
-        pregnant = ft.Switch(label="Enceinte", value=current.pregnant)
-        breastfeeding = ft.Switch(label="Allaitement", value=current.breastfeeding)
-        female_options = ft.Column([pregnant, breastfeeding], visible=current.sex == "F")
+
+        # Situation d'une femme : un seul choix parmi WOMAN_STATUSES (réglée, enceinte...).
+        # Réponse enregistrée, sinon estimation d'après l'âge (config : menstruation_age_range).
+        status_group = ft.RadioGroup(
+            value=replace(current, sex="F").effective_status(),
+            content=ft.Column(
+                [ft.Radio(value=k, label=v["label"]) for k, v in WOMAN_STATUSES.items()],
+                spacing=0,
+            ),
+        )
+        # Nutriments dont la référence dépend de la situation (au moins une clé autre que « femme »).
+        status_labels = [
+            n["label"]
+            for n in NUTRIENTS
+            if set(REFERENCES[n["key"]]) - {"homme", "femme"}
+        ]
+        female_controls: list[ft.Control] = [ft.Text("Situation"), status_group]
+        if status_labels:
+            female_controls.append(
+                ft.Text(f"Change la référence de : {', '.join(status_labels)}", size=12, color=ft.Colors.GREY_700)
+            )
+        female_options = ft.Column(female_controls, visible=current.sex == "F")
 
         # Choix multiple des nutriments à suivre (un cercle par nutriment coché)
         nutrient_checks = {
@@ -153,8 +182,10 @@ def main(page: ft.Page):
             for n in NUTRIENTS
         }
         nutrient_error = ft.Text("", color=ft.Colors.RED_700, size=12, visible=False)
+        # Message d'erreur aussi tout en haut, pour le voir quand on enregistre depuis le haut.
+        form_error = ft.Text("", color=ft.Colors.RED_700, visible=False)
 
-        # Cases regroupées par famille (Minéraux, Vitamines, ...) dans l'ordre de NUTRIENTS
+        # Cases regroupées par famille (Minéraux, Vitamines, ...) dans l'ordre de config.toml
         grouped_checks = ft.Column(spacing=0)
         last_group = None
         for n in NUTRIENTS:
@@ -166,14 +197,16 @@ def main(page: ft.Page):
             grouped_checks.controls.append(nutrient_checks[n["key"]])
 
         def clear_nutrient_error():
-            if nutrient_error.visible:
+            if nutrient_error.visible or form_error.visible:
                 nutrient_error.visible = False
+                form_error.visible = False
                 page.update()
 
         def set_all_nutrients(value: bool):
             for c in nutrient_checks.values():
                 c.value = value
             nutrient_error.visible = False
+            form_error.visible = False
             page.update()
 
         def on_sex_change(e):
@@ -188,45 +221,66 @@ def main(page: ft.Page):
             ),
         )
 
-        def save_profile(e):
+        def fail(message: str):
+            form_error.value = message
+            form_error.visible = True
+            page.update()
+
+        def save_profile(e=None):
+            form_error.visible = False
             try:
                 age = int(age_field.value)
-                if not 1 <= age <= 120:
+                if not AGE_MIN <= age <= AGE_MAX:
                     raise ValueError
             except (TypeError, ValueError):
-                age_field.error = "Entre un âge valide (1-120)"
-                page.update()
+                age_field.error = f"Entre un âge valide ({AGE_MIN}-{AGE_MAX})"
+                fail("Âge invalide")
                 return
             chosen = [k for k, c in nutrient_checks.items() if c.value]
             if not chosen:
                 nutrient_error.value = "Choisis au moins un nutriment"
                 nutrient_error.visible = True
-                page.update()
+                fail("Choisis au moins un nutriment")
                 return
+            is_woman = sex.value == "F"
             profile = Profile(
                 age=age,
                 sex=sex.value,
-                pregnant=sex.value == "F" and pregnant.value,
-                breastfeeding=sex.value == "F" and breastfeeding.value,
+                status=status_group.value if is_woman else None,
                 nutrients=chosen,
             )
             state["profile"] = profile.to_dict()
             save_state(state)
             show_main()
 
+        def save_button() -> ft.FilledButton:
+            # Un bouton en haut (barre fixe) et un en bas de la page : même action.
+            return ft.FilledButton("Enregistrer", icon=ft.Icons.CHECK, on_click=save_profile)
+
+        # Barre du haut : reste visible quand on fait défiler le formulaire.
+        page.appbar = ft.AppBar(
+            title=ft.Text("Ton profil", weight=ft.FontWeight.BOLD),
+            center_title=False,
+            leading=(
+                ft.IconButton(ft.Icons.ARROW_BACK, tooltip="Retour sans enregistrer", on_click=lambda e: show_main())
+                if has_profile
+                else None
+            ),
+            actions=[save_button(), ft.Container(width=12)],
+        )
         page.clean()
         page.add(
             ft.SafeArea(
                 ft.Container(
-                    padding=20,
+                    padding=ft.Padding.only(left=20, right=20, top=4, bottom=20),
                     content=ft.Column(
                         [
-                            ft.Text("Ton profil", size=28, weight=ft.FontWeight.BOLD),
                             ft.Text(
                                 "Il sert à calculer tes apports recommandés pour chaque nutriment.",
                                 color=ft.Colors.GREY_700,
                             ),
-                            ft.Container(height=10),
+                            form_error,
+                            ft.Container(height=6),
                             age_field,
                             ft.Text("Sexe"),
                             sex,
@@ -242,7 +296,7 @@ def main(page: ft.Page):
                             grouped_checks,
                             nutrient_error,
                             ft.Container(height=10),
-                            ft.FilledButton("Enregistrer", on_click=save_profile),
+                            save_button(),
                         ],
                         spacing=10,
                     ),
@@ -428,6 +482,7 @@ def main(page: ft.Page):
             foods.update(merge_foods(OFFICIAL_FOODS, state["custom_foods"]))
             show_main()
 
+        page.appbar = None
         page.clean()
         page.add(
             ft.SafeArea(
@@ -485,14 +540,14 @@ def main(page: ft.Page):
         def build_ring(n: dict, ratio: float, total: float, rec: float) -> ft.Control:
             done = ratio >= 1
             color = COLOR_DONE if done else COLOR_TODO
-            size = 88
+            size = RING_SIZE
             return ft.Column(
                 [
                     ft.Stack(
                         [
                             ft.ProgressRing(
                                 value=min(ratio, 1.0),
-                                stroke_width=9,
+                                stroke_width=RING_STROKE,
                                 width=size,
                                 height=size,
                                 color=color,
@@ -625,6 +680,7 @@ def main(page: ft.Page):
                 )
             )
 
+        page.appbar = None
         page.clean()
         page.add(
             ft.SafeArea(

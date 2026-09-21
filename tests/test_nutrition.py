@@ -4,6 +4,7 @@ import pytest
 
 from nutrition import (
     Profile,
+    WOMAN_STATUSES,
     completion,
     daily_totals,
     find_food,
@@ -51,21 +52,106 @@ def test_daily_totals_scale_with_grams():
     assert totals["calcium"] == pytest.approx(38)
 
 
-def test_recommended_depends_on_profile():
-    woman = recommended_intakes(Profile(age=30, sex="F"))
-    man = recommended_intakes(Profile(age=30, sex="H"))
-    assert woman["fer"] > man["fer"]
-    pregnant = recommended_intakes(Profile(age=30, sex="F", pregnant=True))
-    assert pregnant["iode"] == 200
-    breastfeeding = recommended_intakes(Profile(age=30, sex="F", breastfeeding=True))
-    assert breastfeeding["selenium"] == 85
-    # grossesse ignorée pour un homme
-    assert recommended_intakes(Profile(age=30, sex="H", pregnant=True)) == man
+# Configuration de test : on vérifie la LOGIQUE de choix de la référence, pas les valeurs
+# de config.toml (que tu peux modifier librement).
+TEST_NUTRIENTS = [{"key": "fer"}, {"key": "zinc"}, {"key": "calcium"}]
+TEST_REFS = {
+    "fer": {
+        "homme": [(3, 7), (200, 11)],
+        "femme": [(3, 7), (200, 11)],
+        "femme_regles": [(3, 7), (200, 16)],
+        "femme_regles_abondantes": [(3, 7), (200, 20)],
+        "grossesse": 15,
+        "allaitement": 10,
+    },
+    "zinc": {"homme": [(200, 10)], "femme": [(200, 8)], "grossesse": 9.5, "allaitement": 12},
+    "calcium": {"homme": [(200, 900)], "femme": [(200, 900)]},
+    # « règles » défini, mais pas « règles abondantes » : celle-ci doit se rabattre sur « règles »
+    "iode": {"homme": [(200, 150)], "femme": [(200, 150)], "femme_regles": [(200, 160)]},
+}
+
+
+def rec(**profile_kwargs):
+    return recommended_intakes(Profile(**profile_kwargs), references=TEST_REFS, nutrients=TEST_NUTRIENTS)
+
+
+def rec_iode(**profile_kwargs):
+    return recommended_intakes(Profile(**profile_kwargs), references=TEST_REFS, nutrients=[{"key": "iode"}])["iode"]
+
+
+def test_recommended_depends_on_sex_and_age():
+    assert rec(age=30, sex="H")["zinc"] == 10
+    assert rec(age=30, sex="F", status="non_reglee")["zinc"] == 8
+    assert rec(age=2, sex="F", status="reglee")["fer"] == 7  # tranche d'âge : enfant
+
+
+def test_each_woman_status_uses_its_own_reference():
+    fer = {s: rec(age=30, sex="F", status=s)["fer"] for s in WOMAN_STATUSES}
+    assert fer == {"non_reglee": 11, "reglee": 16, "abondante": 20, "enceinte": 15, "allaitement": 10}
+    zinc = {s: rec(age=30, sex="F", status=s)["zinc"] for s in WOMAN_STATUSES}
+    # zinc : pas de valeur règles -> « femme » ; grossesse et allaitement définis
+    assert zinc == {"non_reglee": 8, "reglee": 8, "abondante": 8, "enceinte": 9.5, "allaitement": 12}
+
+
+def test_missing_reference_falls_back():
+    calcium = {s: rec(age=30, sex="F", status=s)["calcium"] for s in WOMAN_STATUSES}
+    assert set(calcium.values()) == {900}  # aucune clé spécifique : « femme » partout
+    assert rec_iode(age=30, sex="F", status="abondante") == 160  # abondante -> règles
+    assert rec_iode(age=30, sex="F", status="reglee") == 160
+    assert rec_iode(age=30, sex="F", status="enceinte") == 150  # pas de grossesse -> femme
+
+
+def test_status_default_is_guessed_from_age():
+    assert Profile(age=30, sex="F").effective_status() == "reglee"  # dans menstruation_age_range
+    assert Profile(age=60, sex="F").effective_status() == "non_reglee"
+    assert Profile(age=2, sex="F").effective_status() == "non_reglee"
+    assert rec(age=30, sex="F")["fer"] == 16 and rec(age=60, sex="F")["fer"] == 11
+    # la réponse du profil l'emporte sur l'estimation
+    assert rec(age=60, sex="F", status="reglee")["fer"] == 16
+    assert rec(age=30, sex="F", status="non_reglee")["fer"] == 11
+
+
+def test_men_ignore_status():
+    man = rec(age=30, sex="H")
+    for status in WOMAN_STATUSES:
+        assert rec(age=30, sex="H", status=status) == man
+    assert Profile(age=30, sex="H", status="enceinte").effective_status() is None
+
+
+def test_profile_status_roundtrip():
+    p = Profile(age=50, sex="F", status="abondante")
+    assert Profile.from_dict(p.to_dict()).status == "abondante"
+    assert Profile.from_dict(Profile(age=30).to_dict()).status is None
+    assert Profile.from_dict({"status": "n'importe quoi"}).status is None  # valeur inconnue ignorée
+
+
+def test_old_profiles_are_migrated():
+    """Anciens fichiers : cases séparées pregnant / breastfeeding / menstruating."""
+    base = {"age": 30, "sex": "F"}
+    assert Profile.from_dict(base).status is None  # ni case ni réponse : estimée d'après l'âge
+    assert Profile.from_dict({**base, "pregnant": True}).status == "enceinte"
+    assert Profile.from_dict({**base, "breastfeeding": True}).status == "allaitement"
+    assert Profile.from_dict({**base, "pregnant": True, "breastfeeding": True}).status == "allaitement"
+    assert Profile.from_dict({**base, "menstruating": True}).status == "reglee"
+    assert Profile.from_dict({**base, "menstruating": False}).status == "non_reglee"
+    assert Profile.from_dict({**base, "pregnant": True, "menstruating": True}).status == "enceinte"
+
+
+def test_shipped_config_status_ordering():
+    """Sanity check sur config.toml : plus de pertes ne baisse jamais la référence."""
+    from nutrition import NUTRIENTS
+
+    for age in (12, 25, 45):
+        r = {s: recommended_intakes(Profile(age=age, sex="F", status=s)) for s in ("non_reglee", "reglee", "abondante")}
+        assert all(r["reglee"][n["key"]] >= r["non_reglee"][n["key"]] for n in NUTRIENTS), age
+        assert all(r["abondante"][n["key"]] >= r["reglee"][n["key"]] for n in NUTRIENTS), age
 
 
 def test_completion_can_exceed_one():
-    rec = recommended_intakes(Profile(age=30, sex="H"))
-    ratios = completion(daily_totals([{"food": "boudin noir", "grams": 200}], FOODS), rec)
+    from nutrition import NUTRIENTS
+
+    rec_ = {n["key"]: 100.0 for n in NUTRIENTS} | {"fer": 11.0, "calcium": 950.0}
+    ratios = completion(daily_totals([{"food": "boudin noir", "grams": 200}], FOODS), rec_)
     assert ratios["fer"] > 1
     assert ratios["calcium"] < 0.1
 
@@ -82,6 +168,13 @@ def test_parse_value_ciqual_formats():
     assert parse_value("< 0,25") == 0
     assert parse_value("<\n0,0005") == 0
     assert parse_value(3) == 3.0
+
+
+def test_parse_value_uses_config_options():
+    assert parse_value("< 0,25", below_limit_factor=0.5) == pytest.approx(0.125)
+    assert parse_value("<\n0,5", below_limit_factor=1) == pytest.approx(0.5)
+    assert parse_value("<", below_limit_factor=1) == 0.0
+    assert parse_value("traces", traces_value=0.1) == pytest.approx(0.1)
 
 
 def test_real_ciqual_csv_if_present():
@@ -123,22 +216,16 @@ def test_profile_ignores_unknown_and_empty_selection():
 
 # --- vitamines ---------------------------------------------------------------
 def test_every_nutrient_has_reference_and_group():
-    from nutrition import NUTRIENTS, REFERENCES
+    from config import BAND_KEYS, SCALAR_KEYS
+    from nutrition import AGE_MAX, NUTRIENTS, REFERENCES
 
+    assert NUTRIENTS
     for n in NUTRIENTS:
-        assert n["key"] in REFERENCES, n["key"]
-        assert n["group"] in ("Minéraux", "Vitamines")
-        assert set(REFERENCES[n["key"]]) >= {"H", "F"}
-    assert {n["group"] for n in NUTRIENTS} == {"Minéraux", "Vitamines"}
-
-
-def test_vitamin_references_depend_on_profile():
-    woman = recommended_intakes(Profile(age=30, sex="F"))
-    man = recommended_intakes(Profile(age=30, sex="H"))
-    assert woman["vitamine_c"] < man["vitamine_c"]
-    assert woman["vitamine_d"] == man["vitamine_d"] == 15
-    assert recommended_intakes(Profile(age=30, sex="F", pregnant=True))["vitamine_b9"] == 600
-    assert recommended_intakes(Profile(age=30, sex="F", breastfeeding=True))["vitamine_a"] == 1300
+        ref = REFERENCES[n["key"]]
+        assert n["group"] and n["label"] and n["unit"] and n["col"]
+        assert set(ref) >= {"homme", "femme"}
+        assert set(ref) <= set(BAND_KEYS) | set(SCALAR_KEYS)
+        assert ref["homme"][-1][0] >= AGE_MAX  # toutes les tranches d'âge sont couvertes
 
 
 def test_real_csv_has_vitamins():
@@ -157,10 +244,11 @@ def test_real_csv_has_vitamins():
 def test_top_nutrient_uses_share_of_recommendation_not_raw_amount():
     from nutrition import NUTRIENTS, selected_nutrients, top_nutrient
 
-    profile = Profile(age=30, sex="F")
-    rec = recommended_intakes(profile)
+    recs = {n["key"]: 1e9 for n in NUTRIENTS} | {
+        "fer": 16, "calcium": 950, "magnesium": 300, "zinc": 9, "potassium": 3500, "iode": 150, "selenium": 70,
+    }
     entry = {"food": "lentilles cuites", "grams": 100}
-    top = top_nutrient(entry, FOODS, rec, NUTRIENTS)
+    top = top_nutrient(entry, FOODS, recs, NUTRIENTS)
     # le potassium a la plus grosse quantité brute (369 mg) mais le fer pèse plus (3,3/16)
     assert top["key"] == "fer"
     assert top["amount"] == pytest.approx(3.3)
@@ -172,9 +260,9 @@ def test_top_nutrient_only_among_chosen_nutrients_and_scales_with_grams():
     from nutrition import selected_nutrients, top_nutrient
 
     profile = Profile(age=30, sex="F", nutrients=["calcium", "potassium"])
-    rec = recommended_intakes(profile)
+    recs = {"calcium": 950, "potassium": 3500}
     chosen = selected_nutrients(profile)
-    top = top_nutrient({"food": "lentilles cuites", "grams": 200}, FOODS, rec, chosen)
+    top = top_nutrient({"food": "lentilles cuites", "grams": 200}, FOODS, recs, chosen)
     assert top["key"] == "potassium"  # 738/3500 > 38/950
     assert top["amount"] == pytest.approx(738)
 

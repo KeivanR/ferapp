@@ -1,0 +1,231 @@
+# ============================================================================
+#  Configuration de Nutri-Suivi
+# ============================================================================
+#  Ce fichier est lu au démarrage de l'app (et par build_foods.py).
+#  Une erreur de saisie (clé inconnue, tranches d'âge dans le désordre...) est
+#  signalée avec le nom du nutriment concerné : l'app refuse de démarrer plutôt
+#  que d'afficher de faux chiffres.
+#
+#  ATTENTION : les apports de référence ci-dessous sont des ordres de grandeur
+#  saisis pour le prototype (inspirés des références EFSA / ANSES). À vérifier
+#  avant tout usage réel ; l'app n'est pas un dispositif médical.
+# ============================================================================
+
+[app]
+title = "Nutri-Suivi"
+foods_file = "foods.csv"     # base d'aliments (pour 100 g), générée par build_foods.py
+suggestions_max = 8          # nombre de suggestions affichées pendant la frappe
+
+[profile]
+default_age = 30
+age_min = 1
+age_max = 120
+# Tranche d'âge où « réglée » est proposé par défaut pour une femme (nouveau profil, ou
+# ancien profil enregistré avant l'existence de ce choix) ; hors tranche : « non réglée ».
+menstruation_age_range = [12, 50]
+
+[display]
+ring_size = 88               # diamètre des cercles de complétion (pixels)
+ring_stroke_width = 9
+color_todo = "#FB8C00"       # cercle pas encore complet (orange)
+color_done = "#43A047"       # cercle complet, référence atteinte (vert)
+color_custom_food = "#EF6C00" # aliments personnalisés dans les suggestions (orange)
+
+[foods_build]
+# Réglages de build_foods.py (conversion de la table Ciqual xlsx -> foods.csv)
+required_group = "Minéraux"  # on écarte les aliments sans aucune valeur pour ce groupe ("" = aucun filtre)
+below_limit_factor = 0.0     # "< 0,25" devient 0,25 x ce facteur (0 = zéro, 0.5 = moitié, 1 = la limite)
+traces_value = 0.0           # valeur utilisée pour "traces"
+
+# ----------------------------------------------------------------------------
+#  Nutriments suivis (l'ordre ici = l'ordre des cercles et des cases du profil)
+#
+#    label, unit, group : affichage
+#    csv_column         : colonne correspondante dans foods.csv
+#    ciqual             : (build_foods.py) expressions régulières sur l'en-tête Ciqual, essayées
+#                         dans l'ordre ; une sous-liste = valeurs additionnées (ex. D2 + D3)
+#
+#  Références [nutrients.<clé>.reference] :
+#    homme                      : tranches d'âge [[âge_max_inclus, valeur], ...]
+#                                 (la dernière tranche doit aller au moins jusqu'à age_max)
+#    femme                      : idem — sert pour une femme NON RÉGLÉE, et de valeur de repli
+#    femme_regles               : idem — femme réglée (facultatif)
+#    femme_regles_abondantes    : idem — femme abondamment réglée (facultatif)
+#    grossesse, allaitement     : valeur unique (facultatif)
+#
+#  Situation choisie dans le profil -> clé utilisée (la première définie pour ce nutriment) :
+#    non réglée            : femme
+#    réglée                : femme_regles, sinon femme
+#    abondamment réglée    : femme_regles_abondantes, sinon femme_regles, sinon femme
+#    enceinte              : grossesse, sinon femme
+#    allaitement           : allaitement, sinon femme
+#  Un homme utilise toujours « homme ».
+#
+#  Pour ajouter un nutriment : colonne dans foods.csv + un bloc ci-dessous. Rien à toucher
+#  dans le code : cases du profil et cercles se créent tout seuls.
+# ----------------------------------------------------------------------------
+
+# --- Minéraux ---------------------------------------------------------------
+
+[nutrients.fer]
+label = "Fer"
+unit = "mg"
+group = "Minéraux"
+csv_column = "fer_mg"
+ciqual = ['^Fer \(mg']
+[nutrients.fer.reference]
+homme = [[3, 7], [10, 11], [17, 13], [200, 11]]
+femme = [[3, 7], [10, 11], [17, 13], [200, 11]]        # non réglée (ménopause, etc.)
+femme_regles = [[3, 7], [10, 11], [200, 16]]           # réglée
+femme_regles_abondantes = [[3, 7], [10, 11], [200, 18]] # abondamment réglée (valeur estimée, à vérifier)
+grossesse = 16
+allaitement = 10
+
+[nutrients.calcium]
+label = "Calcium"
+unit = "mg"
+group = "Minéraux"
+csv_column = "calcium_mg"
+ciqual = ['^Calcium \(mg']
+[nutrients.calcium.reference]
+homme = [[3, 450], [10, 800], [17, 1150], [24, 1000], [200, 950]]
+femme = [[3, 450], [10, 800], [17, 1150], [24, 1000], [200, 950]]
+
+[nutrients.magnesium]
+label = "Magnésium"
+unit = "mg"
+group = "Minéraux"
+csv_column = "magnesium_mg"
+ciqual = ['^Magnésium \(mg']
+[nutrients.magnesium.reference]
+homme = [[3, 170], [10, 230], [14, 250], [17, 350], [200, 350]]
+femme = [[3, 170], [10, 230], [14, 250], [17, 300], [200, 300]]
+
+[nutrients.zinc]
+label = "Zinc"
+unit = "mg"
+group = "Minéraux"
+csv_column = "zinc_mg"
+ciqual = ['^Zinc \(mg']
+[nutrients.zinc.reference]
+homme = [[3, 4.3], [6, 5.5], [10, 7.4], [14, 10.7], [17, 11.9], [200, 11.0]]
+femme = [[3, 4.3], [6, 5.5], [10, 7.4], [14, 10.7], [17, 10.2], [200, 8.9]]
+grossesse = 10.5
+allaitement = 11.8
+
+[nutrients.potassium]
+label = "Potassium"
+unit = "mg"
+group = "Minéraux"
+csv_column = "potassium_mg"
+ciqual = ['^Potassium \(mg']
+[nutrients.potassium.reference]
+homme = [[3, 800], [6, 1800], [10, 2000], [14, 2900], [17, 3500], [200, 3500]]
+femme = [[3, 800], [6, 1800], [10, 2000], [14, 2900], [17, 3500], [200, 3500]]
+allaitement = 4000
+
+[nutrients.iode]
+label = "Iode"
+unit = "µg"
+group = "Minéraux"
+csv_column = "iode_ug"
+ciqual = ['^Iode \(µg']
+[nutrients.iode.reference]
+homme = [[10, 90], [14, 120], [200, 150]]
+femme = [[10, 90], [14, 120], [200, 150]]
+grossesse = 200
+allaitement = 200
+
+[nutrients.selenium]
+label = "Sélénium"
+unit = "µg"
+group = "Minéraux"
+csv_column = "selenium_ug"
+ciqual = ['^Sélénium \(µg']
+[nutrients.selenium.reference]
+homme = [[3, 15], [6, 30], [10, 45], [14, 60], [200, 70]]
+femme = [[3, 15], [6, 30], [10, 45], [14, 60], [200, 70]]
+allaitement = 85
+
+# --- Vitamines --------------------------------------------------------------
+
+[nutrients.vitamine_a]
+label = "Vitamine A"
+unit = "µg"                  # équivalents rétinol
+group = "Vitamines"
+csv_column = "vitamine_a_ug"
+ciqual = ['^Activité vitaminique A']
+[nutrients.vitamine_a.reference]
+homme = [[3, 250], [6, 300], [10, 400], [14, 600], [200, 750]]
+femme = [[3, 250], [6, 300], [10, 400], [14, 600], [200, 650]]
+grossesse = 700
+allaitement = 1300
+
+[nutrients.vitamine_d]
+label = "Vitamine D"
+unit = "µg"
+group = "Vitamines"
+csv_column = "vitamine_d_ug"
+# vitamine D si renseignée, sinon D2 + D3
+ciqual = ['^Vitamine D \(µg', ['^Vitamine D2 \(', '^Vitamine D3 \(']]
+[nutrients.vitamine_d.reference]
+homme = [[200, 15]]
+femme = [[200, 15]]
+
+[nutrients.vitamine_e]
+label = "Vitamine E"
+unit = "mg"                  # alpha-tocophérol
+group = "Vitamines"
+csv_column = "vitamine_e_mg"
+# alpha-tocophérol et « vitamine E » sont renseignés pour des aliments différents
+ciqual = ['^Alpha-tocophérol \(vitamine E\)', '^Vitamine E \(mg']
+[nutrients.vitamine_e.reference]
+homme = [[3, 6], [10, 9], [14, 13], [200, 13]]
+femme = [[3, 6], [10, 9], [14, 11], [200, 11]]
+
+[nutrients.vitamine_k]
+label = "Vitamine K"
+unit = "µg"                  # vitamine K1
+group = "Vitamines"
+csv_column = "vitamine_k1_ug"
+ciqual = ['^Vitamine K1 \(µg']
+[nutrients.vitamine_k.reference]
+homme = [[3, 12], [6, 20], [10, 30], [14, 45], [17, 65], [200, 70]]
+femme = [[3, 12], [6, 20], [10, 30], [14, 45], [17, 65], [200, 70]]
+
+[nutrients.vitamine_c]
+label = "Vitamine C"
+unit = "mg"
+group = "Vitamines"
+csv_column = "vitamine_c_mg"
+ciqual = ['^Vitamine C \(mg']
+[nutrients.vitamine_c.reference]
+homme = [[3, 20], [6, 30], [10, 45], [14, 70], [17, 100], [200, 110]]
+femme = [[3, 20], [6, 30], [10, 45], [14, 70], [17, 90], [200, 95]]
+grossesse = 105
+allaitement = 155
+
+[nutrients.vitamine_b9]
+label = "Vitamine B9"
+unit = "µg"                  # folates
+group = "Vitamines"
+csv_column = "vitamine_b9_ug"
+# équivalents folates (DFE, comme la référence EFSA) d'abord, sinon folates totaux
+ciqual = ['^Vitamine B9 ou Folates totaux, équivalents folates', '^Vitamine B9 ou Folates totaux \(µg']
+[nutrients.vitamine_b9.reference]
+homme = [[3, 120], [6, 140], [10, 200], [14, 270], [200, 330]]
+femme = [[3, 120], [6, 140], [10, 200], [14, 270], [200, 330]]
+grossesse = 600
+allaitement = 500
+
+[nutrients.vitamine_b12]
+label = "Vitamine B12"
+unit = "µg"
+group = "Vitamines"
+csv_column = "vitamine_b12_ug"
+ciqual = ['^Vitamine B12 \(µg']
+[nutrients.vitamine_b12.reference]
+homme = [[6, 1.5], [10, 2.5], [14, 3.5], [200, 4]]
+femme = [[6, 1.5], [10, 2.5], [14, 3.5], [200, 4]]
+grossesse = 4.5
+allaitement = 5

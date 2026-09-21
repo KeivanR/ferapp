@@ -1,10 +1,10 @@
 [project]
-name = "ferapp"
+name = "nutri-suivi"
 version = "0.1.0"
 description = "Suivi des apports en minéraux pour éviter les carences"
-requires-python = ">=3.10"
+requires-python = ">=3.11"  # tomllib (lecture de config.toml) est fourni à partir de Python 3.11
 dependencies = ["flet==1.0.0"]
 
 [tool.flet]
-product = "LehiTequi"
+product = "Nutri-Suivi"
 org = "com.example"
