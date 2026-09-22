@@ -19,7 +19,13 @@ BAND_KEYS = ("homme", "femme", "femme_regles", "femme_regles_abondantes")  # tra
 SCALAR_KEYS = ("grossesse", "allaitement")  # valeur unique
 REQUIRED_BANDS = ("homme", "femme")
 
-APP_DEFAULTS = {"title": "Nutri-Suivi", "foods_file": "foods.csv", "suggestions_max": 8}
+APP_DEFAULTS = {
+    "title": "Nutri-Suivi",
+    "tagline": "Repère les carences dans ton alimentation.",
+    "foods_file": "foods.csv",
+    "suggestions_max": 8,
+    "splash_seconds": 1.2,
+}
 PROFILE_DEFAULTS = {
     "default_age": 30,
     "age_min": 1,
@@ -117,6 +123,7 @@ def load_config(path: str | Path | None = None) -> dict:
     build = _section(raw, "foods_build", BUILD_DEFAULTS)
 
     _number(app["suggestions_max"], "[app] suggestions_max", minimum=1)
+    _number(app["splash_seconds"], "[app] splash_seconds", minimum=0)
     age_min = _number(profile["age_min"], "[profile] age_min", minimum=0)
     age_max = _number(profile["age_max"], "[profile] age_max", minimum=1)
     if age_min >= age_max:

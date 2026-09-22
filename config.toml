@@ -13,8 +13,10 @@
 
 [app]
 title = "Nutri-Suivi"
+tagline = "Avec LehiTequi, repère les carences dans ton alimentation."   # affiché sur la page de démarrage
 foods_file = "foods.csv"     # base d'aliments (pour 100 g), générée par build_foods.py
 suggestions_max = 8          # nombre de suggestions affichées pendant la frappe
+splash_seconds = 3.2         # durée d'affichage de la page de démarrage (secondes)
 
 [profile]
 default_age = 30
@@ -77,7 +79,7 @@ ciqual = ['^Fer \(mg']
 homme = [[3, 7], [10, 11], [17, 13], [200, 11]]
 femme = [[3, 7], [10, 11], [17, 13], [200, 11]]        # non réglée (ménopause, etc.)
 femme_regles = [[3, 7], [10, 11], [200, 16]]           # réglée
-femme_regles_abondantes = [[3, 7], [10, 11], [200, 18]] # abondamment réglée (valeur estimée, à vérifier)
+femme_regles_abondantes = [[3, 7], [10, 11], [200, 20]] # abondamment réglée (valeur estimée, à vérifier)
 grossesse = 16
 allaitement = 10
 

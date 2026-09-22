@@ -19,13 +19,17 @@ pytest                        # tests de la logique et de la configuration
 
 ## Utilisation
 
+- **Démarrage** : une page de présentation (titre, phrase d'accroche, indicateur de chargement) s'affiche
+  brièvement à chaque lancement (durée réglable, `splash_seconds` dans `config.toml`). Ensuite :
+  - un profil existe déjà -> la page principale s'ouvre directement ;
+  - premier lancement, aucun profil enregistré -> un écran de bienvenue invite à créer son profil avant de
+    proposer quoi que ce soit d'autre (bouton « Remplir mon profil »).
 - **Profil** : l'icône en haut de la page principale ouvre une **fiche en lecture seule** (âge, sexe, situation,
   et l'apport recommandé de chaque nutriment suivi) — rien n'y est modifiable directement. Le bouton « Modifier »
   de cette fiche ouvre le formulaire : âge, sexe et, pour une femme, sa **situation** (un seul choix) : non réglée,
   réglée, abondamment réglée, enceinte ou allaitement. Le bouton « Enregistrer » est en haut (barre fixe, toujours
   visible) et en bas ; il ramène à la fiche. Sans réponse (nouveau profil), la situation proposée est « réglée »
-  entre 12 et 50 ans (réglable dans `config.toml`), « non réglée » sinon. Au tout premier lancement, sans profil
-  enregistré, le formulaire s'ouvre directement.
+  entre 12 et 50 ans (réglable dans `config.toml`), « non réglée » sinon.
 - **Ajouter** : tape l'aliment (suggestions pendant la frappe) et le grammage, puis « Ajouter ».
 - **Nutriment principal** : sous chaque entrée s'affiche le nutriment (parmi ceux choisis dans le profil) dont elle
   couvre la plus grande part de l'apport journalier recommandé, avec la quantité ingérée.
@@ -41,7 +45,7 @@ Tout ce qui se règle sans toucher au code est dans `config.toml` :
 
 | Section | Contenu |
 | --- | --- |
-| `[app]` | titre, fichier d'aliments (`foods.csv`), nombre de suggestions affichées |
+| `[app]` | titre, phrase d'accroche et durée de la page de démarrage, fichier d'aliments (`foods.csv`), nombre de suggestions affichées |
 | `[profile]` | âge par défaut, âges min/max acceptés, tranche d'âge où « règles » est coché par défaut |
 | `[display]` | taille et épaisseur des cercles, couleurs (cercle à compléter / complet / aliment perso) |
 | `[foods_build]` | réglages de `build_foods.py` : groupe requis, traitement de `< x` et de `traces` |

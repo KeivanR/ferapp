@@ -7,6 +7,7 @@ Construire l'APK :          flet build apk
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 from dataclasses import replace
 from pathlib import Path
@@ -136,7 +137,85 @@ def main(page: ft.Page):
         return food, grams
 
     # ------------------------------------------------------------------ #
-    # Page profil
+    # Page de démarrage : présente l'app, puis oriente vers la page principale
+    # (profil déjà rempli) ou une invitation à créer son profil (premier lancement).
+    # ------------------------------------------------------------------ #
+    def show_splash():
+        page.appbar = None
+        page.clean()
+        page.add(
+            ft.SafeArea(
+                ft.Container(
+                    expand=True,
+                    alignment=ft.Alignment.CENTER,
+                    padding=30,
+                    content=ft.Column(
+                        [
+                            ft.Icon(ft.Icons.EGG_ALT_OUTLINED, size=72, color=ft.Colors.PRIMARY),
+                            ft.Text(CONFIG["app"]["title"], size=28, weight=ft.FontWeight.BOLD),
+                            ft.Text(
+                                CONFIG["app"]["tagline"],
+                                color=ft.Colors.GREY_700,
+                                text_align=ft.TextAlign.CENTER,
+                            ),
+                            ft.Container(height=24),
+                            ft.ProgressRing(width=28, height=28, stroke_width=3),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=10,
+                    ),
+                ),
+                expand=True,
+            )
+        )
+
+        async def go_next():
+            await asyncio.sleep(CONFIG["app"]["splash_seconds"])
+            if state.get("profile"):
+                show_main()
+            else:
+                show_welcome()
+
+        page.run_task(go_next)
+
+    def show_welcome():
+        """Premier lancement (aucun profil enregistré) : invite à créer son profil
+        avant de proposer quoi que ce soit d'autre."""
+        page.appbar = None
+        page.clean()
+        page.add(
+            ft.SafeArea(
+                ft.Container(
+                    expand=True,
+                    alignment=ft.Alignment.CENTER,
+                    padding=30,
+                    content=ft.Column(
+                        [
+                            ft.Icon(ft.Icons.EGG_ALT_OUTLINED, size=64, color=ft.Colors.PRIMARY),
+                            ft.Text(f"Bienvenue sur {CONFIG['app']['title']}", size=22, weight=ft.FontWeight.BOLD),
+                            ft.Text(
+                                "Commence par renseigner ton profil (âge, sexe, nutriments à suivre) : "
+                                "l'app calculera tes apports recommandés à partir de ce que tu manges.",
+                                color=ft.Colors.GREY_700,
+                                text_align=ft.TextAlign.CENTER,
+                            ),
+                            ft.Container(height=20),
+                            ft.FilledButton(
+                                "Remplir mon profil",
+                                icon=ft.Icons.ARROW_FORWARD,
+                                on_click=lambda e: show_profile_edit(),
+                            ),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        spacing=10,
+                    ),
+                ),
+                expand=True,
+            )
+        )
+
     # ------------------------------------------------------------------ #
     # Profil : fiche (lecture seule) + formulaire (édition, bouton « Modifier »)
     # ------------------------------------------------------------------ #
@@ -792,10 +871,7 @@ def main(page: ft.Page):
         refresh()
 
     # ------------------------------------------------------------------ #
-    if state.get("profile"):
-        show_main()
-    else:
-        show_profile_edit()
+    show_splash()
 
 
 if __name__ == "__main__":
