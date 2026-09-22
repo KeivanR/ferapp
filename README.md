@@ -80,13 +80,54 @@ Le fichier est vérifié au démarrage : une faute (clé inconnue, âges dans le
 `age_max`, colonne CSV en double...) donne un message qui cite le nutriment concerné, et l'app refuse de démarrer
 plutôt que d'afficher de faux chiffres. Pour tester un autre fichier : `NUTRI_CONFIG=/chemin/autre.toml python main.py`.
 
-## Fichiers
+## Organisation du code
+
+```
+nutrition_app/
+├── main.py            point d'entrée (très court : délègue tout à ui/app.py)
+├── config.toml         apports de référence, nutriments, affichage... (à éditer à la main)
+├── config.py            lecture et validation stricte de config.toml
+├── nutrition.py          logique métier : profil, aliments, calculs (testée, sans Flet)
+├── storage.py             sauvegarde locale (JSON) du profil, du journal, des aliments perso
+├── build_foods.py          convertit la table Ciqual .xlsx en foods.csv (à lancer à la main)
+├── foods.csv                base Ciqual convertie (générée par build_foods.py)
+├── foods_demo.csv             mini-base utilisée par les tests
+├── test_nutrition.py           tests de nutrition.py et build_foods.py
+├── test_config.py               tests de config.py
+└── ui/                          interface graphique (Flet) : un fichier par écran
+    ├── app.py                     assemble l'app (charge les données, relie les écrans)
+    ├── context.py                   état partagé (AppContext) et routeur entre écrans
+    ├── style.py                      couleurs et tailles (lues depuis config.toml)
+    ├── widgets.py                     petits widgets réutilisés (saisie d'un aliment, formatage)
+    ├── splash.py                      écran de démarrage
+    ├── welcome.py                      écran de bienvenue (premier lancement)
+    ├── profile_view.py                  fiche du profil (lecture seule)
+    ├── profile_edit.py                   formulaire du profil
+    ├── custom_food.py                     écran « Nouvel aliment »
+    └── home.py                             page principale (saisie, cercles, journal)
+```
+
+Deux couches bien séparées : `nutrition.py` (+ `config.py`, `storage.py`, `build_foods.py`) porte toute la
+logique et ne dépend pas de Flet — c'est ce que `test_nutrition.py` et `test_config.py` testent. `ui/` ne fait
+que l'afficher : chaque écran est une fonction `show_xxx(ctx)` dans son propre fichier, qui ne connaît aucun
+autre écran directement — pour changer d'écran, on appelle `ctx.router.show_yyy()` plutôt que d'importer la
+fonction. C'est `ui/app.py` qui construit l'état partagé (`AppContext`, dans `ui/context.py`) et relie les
+écrans entre eux au démarrage ; c'est le seul fichier qui les connaît tous.
+
+**Ajouter un écran** : crée `ui/mon_ecran.py` avec une fonction `show_mon_ecran(ctx)`, ajoute
+`show_mon_ecran` à la classe `Router` dans `ui/context.py`, puis branche-le dans `ui/app.py`
+(`ctx.router.show_mon_ecran = lambda: show_mon_ecran(ctx)`). Les autres écrans n'ont rien à savoir de plus
+pour pouvoir y naviguer (`ctx.router.show_mon_ecran()`).
+
+**Ajouter un nutriment** : voir plus bas — ça se passe entièrement dans `config.toml`, aucun fichier de `ui/`
+à toucher.
 
 | Fichier | Rôle |
 | --- | --- |
 | `config.toml` | **Configuration** : références, nutriments, affichage, options (à éditer à la main) |
 | `config.py` | Lecture et validation de `config.toml` |
-| `main.py` | Interface : page profil + page principale (saisie, cercles, liste des repas) + nouvel aliment |
+| `main.py` | Point d'entrée Flet (délègue à `ui/app.py`) |
+| `ui/` | Interface : un fichier par écran, voir l'arborescence ci-dessus |
 | `nutrition.py` | Logique : chargement du CSV, apports de référence, calculs |
 | `foods.csv` | Base Ciqual convertie (valeurs pour 100 g), générée par `build_foods.py` |
 | `build_foods.py` | Convertit la table Ciqual `.xlsx` en `foods.csv` (à lancer sur ton ordinateur) |

@@ -6,5 +6,5 @@ requires-python = ">=3.11"  # tomllib (lecture de config.toml) est fourni à par
 dependencies = ["flet==1.0.0"]
 
 [tool.flet]
-product = "LehiTequi"
+product = "Nutri-Suivi"
 org = "com.example"

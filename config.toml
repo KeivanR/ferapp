@@ -13,10 +13,10 @@
 
 [app]
 title = "Nutri-Suivi"
-tagline = "Avec LehiTequi, repère les carences dans ton alimentation."   # affiché sur la page de démarrage
+tagline = "Repère les carences dans ton alimentation."   # affiché sur la page de démarrage
 foods_file = "foods.csv"     # base d'aliments (pour 100 g), générée par build_foods.py
 suggestions_max = 8          # nombre de suggestions affichées pendant la frappe
-splash_seconds = 3.2         # durée d'affichage de la page de démarrage (secondes)
+splash_seconds = 1.2         # durée d'affichage de la page de démarrage (secondes)
 
 [profile]
 default_age = 30
