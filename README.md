@@ -19,10 +19,13 @@ pytest                        # tests de la logique et de la configuration
 
 ## Utilisation
 
-- **Profil** : âge, sexe et, pour une femme, sa **situation** (un seul choix) : non réglée, réglée, abondamment
-  réglée, enceinte ou allaitement. Le bouton « Enregistrer » est en haut (barre fixe, toujours visible) et en bas.
-  Sans réponse (ancien profil, nouveau profil), la situation proposée est « réglée » entre 12 et 50 ans
-  (réglable dans `config.toml`), « non réglée » sinon.
+- **Profil** : l'icône en haut de la page principale ouvre une **fiche en lecture seule** (âge, sexe, situation,
+  et l'apport recommandé de chaque nutriment suivi) — rien n'y est modifiable directement. Le bouton « Modifier »
+  de cette fiche ouvre le formulaire : âge, sexe et, pour une femme, sa **situation** (un seul choix) : non réglée,
+  réglée, abondamment réglée, enceinte ou allaitement. Le bouton « Enregistrer » est en haut (barre fixe, toujours
+  visible) et en bas ; il ramène à la fiche. Sans réponse (nouveau profil), la situation proposée est « réglée »
+  entre 12 et 50 ans (réglable dans `config.toml`), « non réglée » sinon. Au tout premier lancement, sans profil
+  enregistré, le formulaire s'ouvre directement.
 - **Ajouter** : tape l'aliment (suggestions pendant la frappe) et le grammage, puis « Ajouter ».
 - **Nutriment principal** : sous chaque entrée s'affiche le nutriment (parmi ceux choisis dans le profil) dont elle
   couvre la plus grande part de l'apport journalier recommandé, avec la quantité ingérée.

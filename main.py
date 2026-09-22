@@ -138,7 +138,60 @@ def main(page: ft.Page):
     # ------------------------------------------------------------------ #
     # Page profil
     # ------------------------------------------------------------------ #
+    # Profil : fiche (lecture seule) + formulaire (édition, bouton « Modifier »)
+    # ------------------------------------------------------------------ #
     def show_profile():
+        """Fiche du profil : qui tu es et tes apports recommandés. Pas de champ modifiable ici ;
+        le bouton « Modifier » ouvre le formulaire (show_profile_edit)."""
+        current = Profile.from_dict(state["profile"])
+        recs = recommended_intakes(current)
+
+        info_lines = [f"Âge : {current.age} ans", "Sexe : " + ("Femme" if current.sex == "F" else "Homme")]
+        if current.sex == "F":
+            info_lines.append("Situation : " + WOMAN_STATUSES[current.effective_status()]["label"])
+
+        nutrient_rows = ft.Column(spacing=2)
+        last_group = None
+        for n in selected_nutrients(current):
+            if n["group"] != last_group:
+                last_group = n["group"]
+                nutrient_rows.controls.append(
+                    ft.Text(last_group, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_700)
+                )
+            nutrient_rows.controls.append(
+                ft.Text(f"{n['label']} : {fmt(recs[n['key']])} {n['unit']} / jour")
+            )
+        if not selected_nutrients(current):
+            nutrient_rows.controls.append(ft.Text("Aucun nutriment suivi.", color=ft.Colors.GREY_700))
+
+        page.appbar = ft.AppBar(
+            title=ft.Text("Ton profil", weight=ft.FontWeight.BOLD),
+            center_title=False,
+            leading=ft.IconButton(ft.Icons.ARROW_BACK, tooltip="Retour", on_click=lambda e: show_main()),
+            actions=[
+                ft.FilledButton("Modifier", icon=ft.Icons.EDIT, on_click=lambda e: show_profile_edit()),
+                ft.Container(width=12),
+            ],
+        )
+        page.clean()
+        page.add(
+            ft.SafeArea(
+                ft.Container(
+                    padding=ft.Padding.only(left=20, right=20, top=4, bottom=20),
+                    content=ft.Column(
+                        [
+                            *[ft.Text(line) for line in info_lines],
+                            ft.Divider(height=20),
+                            ft.Text("Apports recommandés", size=18, weight=ft.FontWeight.W_600),
+                            nutrient_rows,
+                        ],
+                        spacing=6,
+                    ),
+                )
+            )
+        )
+
+    def show_profile_edit():
         has_profile = bool(state.get("profile"))
         current = Profile.from_dict(state["profile"]) if has_profile else Profile()
 
@@ -251,7 +304,7 @@ def main(page: ft.Page):
             )
             state["profile"] = profile.to_dict()
             save_state(state)
-            show_main()
+            show_profile()
 
         def save_button() -> ft.FilledButton:
             # Un bouton en haut (barre fixe) et un en bas de la page : même action.
@@ -262,7 +315,11 @@ def main(page: ft.Page):
             title=ft.Text("Ton profil", weight=ft.FontWeight.BOLD),
             center_title=False,
             leading=(
-                ft.IconButton(ft.Icons.ARROW_BACK, tooltip="Retour sans enregistrer", on_click=lambda e: show_main())
+                ft.IconButton(
+                    ft.Icons.ARROW_BACK,
+                    tooltip="Retour sans enregistrer",
+                    on_click=lambda e: show_profile(),
+                )
                 if has_profile
                 else None
             ),
@@ -702,7 +759,7 @@ def main(page: ft.Page):
                                     ),
                                     ft.IconButton(
                                         ft.Icons.PERSON_OUTLINE,
-                                        tooltip="Modifier mon profil",
+                                        tooltip="Mon profil",
                                         on_click=lambda e: show_profile(),
                                     ),
                                 ],
@@ -738,7 +795,7 @@ def main(page: ft.Page):
     if state.get("profile"):
         show_main()
     else:
-        show_profile()
+        show_profile_edit()
 
 
 if __name__ == "__main__":
