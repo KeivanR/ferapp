@@ -27,7 +27,10 @@ age_max = 120
 menstruation_age_range = [12, 50]
 
 [display]
-ring_size = 88               # diamètre des cercles de complétion (pixels)
+# Diamètre des cercles de complétion (pixels) : ring_size quand beaucoup de nutriments sont
+# suivis, jusqu'à ring_size_max quand il n'y en a qu'un seul (voir ui/home.py).
+ring_size = 88
+ring_size_max = 200
 ring_stroke_width = 9
 color_todo = "#FB8C00"       # cercle pas encore complet (orange)
 color_done = "#43A047"       # cercle complet, référence atteinte (vert)

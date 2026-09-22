@@ -30,6 +30,9 @@ pytest                        # tests de la logique et de la configuration
   réglée, abondamment réglée, enceinte ou allaitement. Le bouton « Enregistrer » est en haut (barre fixe, toujours
   visible) et en bas ; il ramène à la fiche. Sans réponse (nouveau profil), la situation proposée est « réglée »
   entre 12 et 50 ans (réglable dans `config.toml`), « non réglée » sinon.
+- **Cercles de complétion** : juste sous le titre, centrés. Leur taille dépend du nombre de nutriments suivis dans
+  le profil (`ring_size_max` dans `config.toml`) : un seul nutriment suivi -> un très grand cercle, beaucoup de
+  nutriments -> des cercles plus petits (jusqu'au minimum `ring_size`) pour tous les faire tenir.
 - **Ajouter** : tape l'aliment (suggestions pendant la frappe) et le grammage, puis « Ajouter ».
 - **Nutriment principal** : sous chaque entrée s'affiche le nutriment (parmi ceux choisis dans le profil) dont elle
   couvre la plus grande part de l'apport journalier recommandé, avec la quantité ingérée.

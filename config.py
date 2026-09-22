@@ -33,7 +33,8 @@ PROFILE_DEFAULTS = {
     "menstruation_age_range": [12, 50],
 }
 DISPLAY_DEFAULTS = {
-    "ring_size": 88,
+    "ring_size": 88,  # taille des cercles quand beaucoup de nutriments sont suivis
+    "ring_size_max": 200,  # taille quand un seul nutriment est suivi (voir ui/home.py)
     "ring_stroke_width": 9,
     "color_todo": "#FB8C00",
     "color_done": "#43A047",
@@ -135,6 +136,7 @@ def load_config(path: str | Path | None = None) -> dict:
     if not (isinstance(lo_hi, list) and len(lo_hi) == 2 and lo_hi[0] <= lo_hi[1]):
         raise ConfigError("[profile] menstruation_age_range : [âge_min, âge_max] attendu")
     _number(display["ring_size"], "[display] ring_size", minimum=20)
+    _number(display["ring_size_max"], "[display] ring_size_max", minimum=display["ring_size"])
     _number(display["ring_stroke_width"], "[display] ring_stroke_width", minimum=1)
     _number(build["below_limit_factor"], "[foods_build] below_limit_factor", minimum=0)
     _number(build["traces_value"], "[foods_build] traces_value", minimum=0)

@@ -10,8 +10,18 @@ import flet as ft
 from nutrition import completion, daily_totals, recommended_intakes, selected_nutrients, top_nutrient
 
 from .context import AppContext
-from .style import COLOR_DONE, COLOR_TODO, RING_SIZE, RING_STROKE
+from .style import COLOR_DONE, COLOR_TODO, RING_SIZE, RING_SIZE_MAX, RING_STROKE
 from .widgets import fmt, make_food_input, make_grams_input, validate
+
+
+def ring_size_for(count: int) -> int:
+    """Diamètre des cercles selon le nombre de nutriments suivis : très grand (jusqu'à
+    RING_SIZE_MAX) s'il y en a peu, jusqu'au minimum RING_SIZE s'il y en a beaucoup — pour
+    qu'un profil avec un seul nutriment lui laisse toute la place."""
+    if count <= 1:
+        return RING_SIZE_MAX
+    size = round(RING_SIZE_MAX / count**0.5)
+    return max(RING_SIZE, min(size, RING_SIZE_MAX))
 
 
 def show_main(ctx: AppContext) -> None:
@@ -20,23 +30,30 @@ def show_main(ctx: AppContext) -> None:
     recommended = recommended_intakes(profile)
     shown = selected_nutrients(profile)
 
-    rings_row = ft.Row(wrap=True, alignment=ft.MainAxisAlignment.CENTER, spacing=6, run_spacing=16)
+    # Centrés par rapport à la page : ft.Row(wrap=True) (un « Wrap » Flutter) ne prend que la
+    # largeur de son contenu, donc son alignement centré n'a d'effet qu'une fois placé dans un
+    # Row englobant qui, lui, occupe toute la largeur disponible.
+    rings_wrap = ft.Row(wrap=True, alignment=ft.MainAxisAlignment.CENTER, spacing=16, run_spacing=16)
+    rings_row = ft.Row([rings_wrap], alignment=ft.MainAxisAlignment.CENTER)
     entries_col = ft.Column(spacing=0)
 
     food_field, suggestions_col = make_food_input(ctx, lambda e: add_entry(), expand=True)
     grams_field = make_grams_input(ctx, lambda e: add_entry(), width=110)
 
-    def build_ring(n: dict, ratio: float, total: float, rec: float) -> ft.Control:
+    def build_ring(n: dict, ratio: float, total: float, rec: float, size: int) -> ft.Control:
         done = ratio >= 1
         color = COLOR_DONE if done else COLOR_TODO
-        size = RING_SIZE
+        # Un plus gros cercle mérite un trait, un texte et une coche proportionnellement plus gros.
+        stroke = max(RING_STROKE, round(RING_STROKE * size / RING_SIZE))
+        pct_size = max(16, size // 6)
+        icon_size = max(28, size // 4)
         return ft.Column(
             [
                 ft.Stack(
                     [
                         ft.ProgressRing(
                             value=min(ratio, 1.0),
-                            stroke_width=RING_STROKE,
+                            stroke_width=stroke,
                             width=size,
                             height=size,
                             color=color,
@@ -47,9 +64,9 @@ def show_main(ctx: AppContext) -> None:
                             height=size,
                             alignment=ft.Alignment.CENTER,
                             content=(
-                                ft.Icon(ft.Icons.CHECK, color=color, size=30)
+                                ft.Icon(ft.Icons.CHECK, color=color, size=icon_size)
                                 if done
-                                else ft.Text(f"{ratio * 100:.0f}%", weight=ft.FontWeight.BOLD, size=16)
+                                else ft.Text(f"{ratio * 100:.0f}%", weight=ft.FontWeight.BOLD, size=pct_size)
                             ),
                         ),
                     ],
@@ -61,15 +78,16 @@ def show_main(ctx: AppContext) -> None:
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=3,
-            width=112,
+            width=max(112, size + 24),
         )
 
     def refresh():
         entries = ctx.entries_today()
         totals = daily_totals(entries, ctx.foods)
         ratios = completion(totals, recommended)
-        rings_row.controls = [
-            build_ring(n, ratios[n["key"]], totals[n["key"]], recommended[n["key"]]) for n in shown
+        size = ring_size_for(len(shown))
+        rings_wrap.controls = [
+            build_ring(n, ratios[n["key"]], totals[n["key"]], recommended[n["key"]], size) for n in shown
         ]
         entries_col.controls = [build_entry_tile(i, e) for i, e in enumerate(entries)] or [
             ft.Text("Rien d'ajouté pour l'instant.", color=ft.Colors.GREY_600)
@@ -181,6 +199,9 @@ def show_main(ctx: AppContext) -> None:
                             ],
                             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         ),
+                        ft.Container(height=16),
+                        rings_row,
+                        ft.Container(height=16),
                         ft.Row([food_field, grams_field], vertical_alignment=ft.CrossAxisAlignment.START),
                         suggestions_col,
                         ft.Row(
@@ -194,8 +215,6 @@ def show_main(ctx: AppContext) -> None:
                             ],
                             wrap=True,
                         ),
-                        ft.Divider(height=24),
-                        rings_row,
                         ft.Divider(height=24),
                         ft.Text("Repas du jour", size=18, weight=ft.FontWeight.W_600),
                         entries_col,
