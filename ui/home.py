@@ -11,7 +11,7 @@ from nutrition import completion, daily_totals, recommended_intakes, selected_nu
 
 from .context import AppContext
 from .style import COLOR_DONE, COLOR_TODO, RING_SIZE, RING_SIZE_MAX, RING_STROKE
-from .widgets import fmt, make_food_input, make_grams_input, validate
+from .widgets import QuantityInput, fmt, make_food_input, make_grams_input, validate, validate_with_quantity
 
 
 def ring_size_for(count: int) -> int:
@@ -37,8 +37,13 @@ def show_main(ctx: AppContext) -> None:
     rings_row = ft.Row([rings_wrap], alignment=ft.MainAxisAlignment.CENTER)
     entries_col = ft.Column(spacing=0)
 
-    food_field, suggestions_col = make_food_input(ctx, lambda e: add_entry(), expand=True)
-    grams_field = make_grams_input(ctx, lambda e: add_entry(), width=110)
+    # La quantité se saisit en grammes ou dans une unité familière propre à l'aliment (ex. « 2
+    # fruits ») — voir ui/widgets.QuantityInput. `on_food_changed` la relie au champ aliment pour
+    # recharger ses unités à chaque fois qu'il change.
+    food_field, suggestions_col = make_food_input(
+        ctx, lambda e: add_entry(), on_food_changed=lambda name: quantity.set_food(name), expand=True
+    )
+    quantity = QuantityInput(ctx, on_submit=lambda e: add_entry(), width=140)
 
     def build_ring(n: dict, ratio: float, total: float, rec: float, size: int) -> ft.Control:
         done = ratio >= 1
@@ -121,15 +126,16 @@ def show_main(ctx: AppContext) -> None:
         )
 
     def add_entry(e=None):
-        checked = validate(ctx, food_field, grams_field)
+        checked = validate_with_quantity(ctx, food_field, quantity)
         if checked is None:
             return
         food, grams = checked
         ctx.entries_today().append({"food": food["name"], "grams": grams})
         ctx.save()
         food_field.value = ""
-        grams_field.value = ""
         suggestions_col.controls = []
+        quantity.reset()
+        quantity.set_food("")  # aliment vidé : plus d'unités tant qu'on n'en retape pas un
         refresh()
 
     def delete_entry(index: int):
@@ -202,8 +208,9 @@ def show_main(ctx: AppContext) -> None:
                         ft.Container(height=16),
                         rings_row,
                         ft.Container(height=16),
-                        ft.Row([food_field, grams_field], vertical_alignment=ft.CrossAxisAlignment.START),
+                        ft.Row([food_field]),
                         suggestions_col,
+                        quantity.control,
                         ft.Row(
                             [
                                 ft.FilledButton("Ajouter", icon=ft.Icons.ADD, on_click=add_entry),

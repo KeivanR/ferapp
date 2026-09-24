@@ -27,6 +27,22 @@ def show_custom_food(ctx: AppContext) -> None:
         on_change=lambda e: clear_error(name_field),
     )
 
+    # --- Unité familière optionnelle (ex. « 1 part » = 250 g) — voir ui/widgets.QuantityInput.
+    # Les deux champs vont ensemble : soit aucun des deux, soit les deux. D'autres unités pourront
+    # être ajoutées plus tard pour ce même aliment depuis l'écran principal.
+    unit_label_field = ft.TextField(
+        label="Nom d'une unité (facultatif)",
+        hint_text="ex : fruit, verre, part",
+        width=220,
+        on_change=lambda e: clear_error(unit_label_field),
+    )
+    unit_grams_field = ft.TextField(
+        label="= combien de grammes ?",
+        width=220,
+        keyboard_type=ft.KeyboardType.NUMBER,
+        on_change=lambda e: clear_error(unit_grams_field),
+    )
+
     # --- Mode 1 : teneurs saisies à la main (pour 100 g) ---
     value_fields = {
         n["key"]: ft.TextField(label=f"{n['label']} ({n['unit']})", width=170, keyboard_type=ft.KeyboardType.NUMBER)
@@ -142,6 +158,26 @@ def show_custom_food(ctx: AppContext) -> None:
             name_field.error = "Un aliment porte déjà ce nom"
             ok = False
 
+        # Unité familière : les deux champs ensemble, ou aucun des deux.
+        unit_label = " ".join((unit_label_field.value or "").split())
+        unit_grams_text = (unit_grams_field.value or "").strip()
+        unit_grams = None
+        if unit_label or unit_grams_text:
+            if not unit_label:
+                unit_label_field.error = "Donne un nom à l'unité"
+                ok = False
+            elif normalize(unit_label) == "grammes":
+                unit_label_field.error = "« grammes » est réservé, choisis un autre nom"
+                ok = False
+            if not unit_grams_text:
+                unit_grams_field.error = "Indique le nombre de grammes"
+                ok = False
+            else:
+                unit_grams = parse_grams(unit_grams_text)
+                if unit_grams is None:
+                    unit_grams_field.error = "Invalide"
+                    ok = False
+
         food: dict = {"name": name}
         if mode.value == "manual":
             per100 = {}
@@ -176,6 +212,13 @@ def show_custom_food(ctx: AppContext) -> None:
             return
 
         ctx.add_custom_food(food)
+        if unit_label and unit_grams is not None:
+            try:
+                ctx.add_food_unit(name, unit_label, unit_grams)
+            except ValueError:
+                # Garde-fou seulement : l'aliment est créé quoi qu'il arrive, l'unité pourra être
+                # ajoutée depuis l'écran principal (bouton « Nouvelle unité »).
+                pass
         ctx.router.show_main()
 
     page.appbar = None
@@ -200,6 +243,14 @@ def show_custom_food(ctx: AppContext) -> None:
                             size=13,
                         ),
                         name_field,
+                        ft.Row([unit_label_field, unit_grams_field], wrap=True, spacing=10, run_spacing=10),
+                        ft.Text(
+                            "Facultatif : une unité pratique pour la saisie ensuite (ex. « 1 fruit » plutôt "
+                            "qu'en grammes). D'autres unités pourront être ajoutées plus tard, pour ce ou "
+                            "d'autres aliments, depuis l'écran principal.",
+                            size=12,
+                            color=ft.Colors.GREY_700,
+                        ),
                         mode,
                         manual_col,
                         recipe_col,

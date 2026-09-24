@@ -8,3 +8,7 @@ dependencies = ["flet==1.0.0"]
 [tool.flet]
 product = "Nutri-Suivi"
 org = "com.example"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]  # `pytest` depuis la racine du projet lance tous les tests de tests/
+pythonpath = ["."]     # pour que les tests importent nutrition.py, config.py... sans installation

@@ -43,6 +43,12 @@ below_limit_factor = 0.0     # "< 0,25" devient 0,25 x ce facteur (0 = zéro, 0.
 traces_value = 0.0           # valeur utilisée pour "traces"
 
 # ----------------------------------------------------------------------------
+#  Unités familières par défaut (menu « Unité » de la page principale) : elles ne sont
+#  PAS ici mais dans config/unites_par_defaut.csv (une ligne par aliment Ciqual, éditable
+#  dans un tableur). Voir le README, « Unités par défaut ».
+# ----------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------
 #  Nutriments suivis (l'ordre ici = l'ordre des cercles et des cases du profil)
 #
 #    label, unit, group : affichage

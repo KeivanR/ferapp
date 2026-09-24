@@ -1,0 +1,45 @@
+aliment,fer_mg,calcium_mg,magnesium_mg,zinc_mg,potassium_mg,iode_ug,selenium_ug
+lentilles cuites,3.3,19,36,1.3,369,2,3
+pois chiches cuits,2.9,49,48,1.5,291,2,3
+haricots rouges cuits,2.2,28,45,1.0,400,1,1.2
+haricots blancs cuits,2.5,60,50,1.1,390,1,1
+petits pois cuits,1.5,25,30,1.2,240,2,1
+epinards cuits,2.1,141,60,0.6,466,12,1
+brocoli cuit,0.7,40,21,0.5,300,3,1.6
+carotte cuite,0.3,25,9,0.2,250,3,0.5
+courgette cuite,0.4,20,15,0.2,250,2,0
+tomate crue,0.3,10,11,0.2,237,2,0
+salade verte,0.9,33,13,0.2,240,2,0.5
+pomme de terre cuite,0.4,8,20,0.3,380,3,0.5
+riz blanc cuit,0.2,10,12,0.5,35,1,4
+riz complet cuit,0.6,10,44,1.1,80,1,7
+pates cuites,0.5,7,18,0.5,60,1,7
+quinoa cuit,1.5,17,64,1.1,172,1,2.8
+flocons d'avoine,4.0,55,130,3.5,360,2,10
+pain complet,2.5,60,70,1.7,230,5,15
+baguette,1.3,25,25,0.8,110,3,15
+lait demi-ecreme,0.03,120,12,0.4,150,15,2
+yaourt nature,0.1,140,13,0.6,180,12,2.5
+fromage emmental,0.2,1100,40,4.0,100,20,14
+camembert,0.3,400,20,2.5,100,15,8
+oeuf cuit,1.9,55,11,1.3,130,30,30
+poulet cuit,0.7,12,28,1.0,300,5,20
+boeuf hache cuit,2.8,12,22,6.0,320,5,20
+boudin noir,22,30,20,1.5,150,5,6
+foie de veau cuit,7.5,8,20,8.5,300,10,45
+saumon cuit,0.4,15,30,0.6,400,30,35
+thon au naturel,1.2,15,30,0.9,250,20,70
+cabillaud cuit,0.4,15,30,0.6,400,150,35
+moules cuites,6.0,40,40,2.5,300,130,80
+sardines a l'huile,2.5,400,40,2.5,400,25,50
+tofu,2.5,350,60,1.5,150,5,10
+amandes,3.7,250,260,3.4,730,2,4
+noix,2.9,90,160,3.1,520,3,5
+graines de courge,8.8,46,530,7.6,800,3,9
+graines de sesame,10,780,350,7,470,3,30
+chocolat noir 70%,11,70,200,3.3,700,5,3
+banane,0.3,6,27,0.2,360,2,1
+orange,0.2,40,10,0.1,180,2,0.5
+pomme,0.1,5,5,0.05,110,1,0
+abricots secs,3.0,55,40,0.5,1150,3,1
+raisins secs,2.0,60,33,0.2,750,3,1

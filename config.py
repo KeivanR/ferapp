@@ -1,18 +1,25 @@
-"""Chargement et validation de config.toml (références, nutriments, réglages d'affichage).
+"""Chargement et validation des fichiers de config/ (édités à la main) :
 
-Le fichier est édité à la main : on vérifie tout au chargement et on lève une ConfigError
-qui dit exactement où est le problème, plutôt que d'afficher plus tard de faux chiffres.
+- config/config.toml : références, nutriments, réglages d'affichage (load_config) ;
+- config/unites_par_defaut.csv : l'unité familière par défaut de chaque aliment Ciqual
+  (load_default_units).
 
-Autre fichier possible : variable d'environnement NUTRI_CONFIG (ou argument `path`).
+On vérifie tout au chargement et on lève une ConfigError qui dit exactement où est le
+problème, plutôt que d'afficher plus tard de faux chiffres.
+
+Autre config.toml possible : variable d'environnement NUTRI_CONFIG (ou argument `path`).
 """
 
 from __future__ import annotations
 
+import csv
 import os
 import tomllib
 from pathlib import Path
 
-DEFAULT_PATH = Path(__file__).parent / "config.toml"
+CONFIG_DIR = Path(__file__).parent / "config"
+DEFAULT_PATH = CONFIG_DIR / "config.toml"
+DEFAULT_UNITS_PATH = CONFIG_DIR / "unites_par_defaut.csv"
 
 # Clés autorisées dans [nutrients.<clé>.reference]
 BAND_KEYS = ("homme", "femme", "femme_regles", "femme_regles_abondantes")  # tranches d'âge [[âge_max, valeur], ...]
@@ -44,7 +51,7 @@ BUILD_DEFAULTS = {"required_group": "Minéraux", "below_limit_factor": 0.0, "tra
 
 
 class ConfigError(ValueError):
-    """Erreur dans config.toml."""
+    """Erreur dans un fichier de config/ (config.toml ou unites_par_defaut.csv)."""
 
 
 def _number(value, where: str, minimum: float | None = None) -> float:
@@ -214,3 +221,54 @@ def load_config(path: str | Path | None = None) -> dict:
         "nutrients": nutrients,
         "references": references,
     }
+
+
+UNITS_COLUMNS = ("alim_code", "aliment", "unite", "grammes")
+
+
+def load_default_units(path: str | Path | None = None) -> dict[str, dict | None]:
+    """Lit et valide config/unites_par_defaut.csv. Retourne {alim_code: {"label", "grams"}}.
+
+    Une ligne par aliment Ciqual (repéré par son alim_code ; la colonne « aliment » n'est là
+    que pour s'y retrouver dans un tableur). « unite » et « grammes » tous deux vides =
+    volontairement aucune unité pour cet aliment (valeur None) : seuls les grammes seront
+    proposés. Les grammes sont ceux de la partie comestible, dans l'état décrit par le nom
+    (cru, cuit, égoutté...), comme les teneurs Ciqual.
+    """
+    path = Path(path or DEFAULT_UNITS_PATH)
+    try:
+        f = open(path, newline="", encoding="utf-8-sig")  # -sig : tolère un CSV réenregistré par Excel
+    except FileNotFoundError:
+        raise ConfigError(f"Fichier d'unités introuvable : {path}") from None
+    units: dict[str, dict | None] = {}
+    with f:
+        reader = csv.DictReader(f)
+        missing = [c for c in UNITS_COLUMNS if c not in (reader.fieldnames or [])]
+        if missing:
+            raise ConfigError(
+                f"{path.name} : colonnes manquantes {missing} (attendues : {', '.join(UNITS_COLUMNS)})"
+            )
+        for row in reader:
+            where = f"{path.name}, ligne {reader.line_num}"
+            code = (row["alim_code"] or "").strip()
+            label = " ".join((row["unite"] or "").split())
+            raw_grams = (row["grammes"] or "").strip().replace(",", ".")
+            if not code:
+                raise ConfigError(f"{where} : alim_code manquant")
+            if code in units:
+                raise ConfigError(f"{where} : alim_code {code} apparaît deux fois")
+            if not label and not raw_grams:
+                units[code] = None  # pas d'unité pour cet aliment, choix volontaire
+                continue
+            if not label:
+                raise ConfigError(f"{where} : « unite » vide alors que « grammes » est rempli")
+            if label.lower() == "grammes":
+                raise ConfigError(f"{where} : « grammes » est réservé (unité de base toujours proposée)")
+            try:
+                grams = float(raw_grams)
+            except ValueError:
+                raise ConfigError(f"{where} : « grammes » doit être un nombre (reçu {row['grammes']!r})") from None
+            if grams <= 0:
+                raise ConfigError(f"{where} : « grammes » doit être positif (reçu {grams:g})")
+            units[code] = {"label": label, "grams": grams}
+    return units

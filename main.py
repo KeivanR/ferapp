@@ -5,10 +5,12 @@ Lancer dans le navigateur : flet run --web main.py
 Construire l'APK :          flet build apk
 
 Organisation du code (voir README.md pour le détail de chaque fichier) :
-  config.toml, config.py     réglages et apports de référence (édités à la main, validés au démarrage)
+  config/, config.py         réglages, apports de référence et unités par défaut (édités à la main,
+                             validés au démarrage)
   nutrition.py, storage.py   logique métier et sauvegarde locale (testées, sans dépendance à Flet)
   build_foods.py             génère foods.csv à partir de la table Ciqual (à lancer à la main)
   ui/                        interface graphique : un fichier par écran, voir ui/app.py
+  tests/                     tests automatiques (lancer « pytest » depuis la racine)
 """
 
 from __future__ import annotations

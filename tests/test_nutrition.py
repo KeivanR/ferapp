@@ -15,6 +15,7 @@ from nutrition import (
     search_foods,
 )
 
+ROOT = Path(__file__).parent.parent
 FOODS = load_foods(Path(__file__).parent / "foods_demo.csv")
 
 
@@ -178,16 +179,50 @@ def test_parse_value_uses_config_options():
 
 
 def test_real_ciqual_csv_if_present():
-    path = Path(__file__).parent / "foods.csv"
+    path = ROOT / "foods.csv"
     if not path.exists():
         pytest.skip("foods.csv non généré")
     foods = load_foods(path)
     assert len(foods) > 2000
     assert any("Lentille verte, bouillie" in f["name"] for f in foods.values())
+    hits = search_foods("pain", foods)
+    assert hits[0] == "Pain (aliment moyen)"
     hits = search_foods("lentille", foods)
     assert hits and all("lentille" in normalize(h) for h in hits)
-    # les plus courts d'abord
-    assert len(hits[0]) <= len(hits[-1])
+    assert "(aliment moyen)" in hits[0]
+
+
+# --- « aliment moyen » proposé en premier (config Ciqual, voir search_foods) -----------------
+def test_search_foods_ranks_aliment_moyen_first():
+    foods = load_foods(Path(__file__).parent / "foods_demo.csv")
+    foods = dict(foods)
+    for name in ("Pain complet", "Pain (aliment moyen)", "Pain aux céréales"):
+        foods[normalize(name)] = {"name": name, "per100": {}, "custom": False}
+
+    hits = search_foods("pain", foods)
+    assert hits[0] == "Pain (aliment moyen)"
+
+
+def test_search_foods_custom_food_still_ranks_before_aliment_moyen():
+    foods = load_foods(Path(__file__).parent / "foods_demo.csv")
+    foods = dict(foods)
+    foods[normalize("Pain (aliment moyen)")] = {
+        "name": "Pain (aliment moyen)",
+        "per100": {},
+        "custom": False,
+    }
+    foods[normalize("Pain maison")] = {"name": "Pain maison", "per100": {}, "custom": True}
+
+    hits = search_foods("pain", foods)
+    assert hits[0] == "Pain maison"
+    assert hits[1] == "Pain (aliment moyen)"
+
+
+def test_search_foods_no_aliment_moyen_is_unaffected():
+    # "lentilles cuites" (foods_demo.csv) n'a pas de variante "(aliment moyen)" :
+    # le classement retombe simplement sur le nom le plus court.
+    hits = search_foods("lentille", FOODS)
+    assert hits == ["lentilles cuites"]
 
 
 # --- choix des nutriments dans le profil -------------------------------------
@@ -229,7 +264,7 @@ def test_every_nutrient_has_reference_and_group():
 
 
 def test_real_csv_has_vitamins():
-    path = Path(__file__).parent / "foods.csv"
+    path = ROOT / "foods.csv"
     if not path.exists():
         pytest.skip("foods.csv non généré")
     foods = load_foods(path)
@@ -288,7 +323,7 @@ def test_resolve_uses_fallback_and_sums():
 
 
 def test_real_csv_vitamin_coverage_and_lentils():
-    path = Path(__file__).parent / "foods.csv"
+    path = ROOT / "foods.csv"
     if not path.exists():
         pytest.skip("foods.csv non généré")
     import csv
@@ -370,11 +405,119 @@ def test_storage_defaults_and_old_files(tmp_path, monkeypatch):
     import storage
 
     monkeypatch.setenv("FLET_APP_STORAGE_DATA", str(tmp_path))
-    assert storage.load_state() == {"profile": None, "journal": {}, "custom_foods": []}
-    # ancien fichier sans "custom_foods"
+    assert storage.load_state() == {"profile": None, "journal": {}, "custom_foods": [], "food_units": {}}
+    # ancien fichier sans "custom_foods" ni "food_units"
     (tmp_path / "state.json").write_text(json.dumps({"profile": {"age": 30}, "journal": {}}))
     state = storage.load_state()
-    assert state["custom_foods"] == [] and state["profile"] == {"age": 30}
+    assert state["custom_foods"] == [] and state["profile"] == {"age": 30} and state["food_units"] == {}
     state["custom_foods"].append({"name": "x", "per100": {}})
     storage.save_state(state)
     assert storage.load_state()["custom_foods"][0]["name"] == "x"
+
+
+# --- unités familières (ex. « 1 assiette » = 250 g) ---------------------------
+def test_units_for_food_empty_when_unknown_or_undefined():
+    from nutrition import units_for_food
+
+    assert units_for_food("xyz", FOODS, {}) == []
+    assert units_for_food("lentilles cuites", FOODS, {}) == []
+
+
+def test_add_food_unit_then_visible_in_units_for_food():
+    from nutrition import add_food_unit, units_for_food
+
+    food_units: dict[str, list[dict]] = {}
+    unit = add_food_unit("lentilles cuites", "assiette", 250, FOODS, food_units)
+    assert unit == {"label": "assiette", "grams": 250}
+    assert units_for_food("lentilles cuites", FOODS, food_units) == [{"label": "assiette", "grams": 250}]
+    # un autre aliment n'est pas affecté
+    assert units_for_food("boudin noir", FOODS, food_units) == []
+
+
+def test_add_food_unit_errors():
+    from nutrition import add_food_unit
+
+    food_units: dict[str, list[dict]] = {}
+    with pytest.raises(ValueError):
+        add_food_unit("xyz", "part", 100, FOODS, food_units)  # aliment inconnu
+    with pytest.raises(ValueError):
+        add_food_unit("lentilles cuites", "", 100, FOODS, food_units)  # nom vide
+    with pytest.raises(ValueError):
+        add_food_unit("lentilles cuites", "Grammes", 100, FOODS, food_units)  # réservé (insensible casse/accents)
+    with pytest.raises(ValueError):
+        add_food_unit("lentilles cuites", "assiette", 0, FOODS, food_units)  # grammes non positifs
+    with pytest.raises(ValueError):
+        add_food_unit("lentilles cuites", "assiette", -5, FOODS, food_units)
+    add_food_unit("lentilles cuites", "assiette", 250, FOODS, food_units)
+    with pytest.raises(ValueError):
+        add_food_unit("lentilles cuites", "Assiette", 300, FOODS, food_units)  # doublon insensible casse
+
+
+# --- unité par défaut de chaque aliment (config/unites_par_defaut.csv) --------------------------
+# Base de test avec des codes Ciqual, et un fichier d'unités fictif passé explicitement.
+CODED_FOODS = {
+    "kiwi, cru": {"name": "Kiwi, cru", "code": "13039", "per100": {}, "custom": False},
+    "sel": {"name": "Sel", "code": "11017", "per100": {}, "custom": False},
+    "mystere": {"name": "Mystère", "code": "99999", "per100": {}, "custom": False},
+    "gateau maison": {"name": "Gâteau maison", "code": None, "per100": {}, "custom": True},
+}
+TEST_UNITS = {"13039": {"label": "fruit", "grams": 75.0}, "11017": None}
+
+
+def test_default_unit_for_uses_code():
+    from nutrition import default_unit_for
+
+    assert default_unit_for("kiwi, cru", CODED_FOODS, TEST_UNITS) == {"label": "fruit", "grams": 75.0}
+    assert default_unit_for("sel", CODED_FOODS, TEST_UNITS) is None  # volontairement sans unité
+    assert default_unit_for("mystere", CODED_FOODS, TEST_UNITS) is None  # absent du fichier
+    assert default_unit_for("gateau maison", CODED_FOODS, TEST_UNITS) is None  # perso : pas de code
+    assert default_unit_for("xyz", CODED_FOODS, TEST_UNITS) is None  # aliment inconnu
+    assert default_unit_for("lentilles cuites", FOODS) is None  # base de démo : pas de codes
+
+
+def test_default_unit_for_returns_a_copy():
+    from nutrition import default_unit_for
+
+    default_unit_for("kiwi, cru", CODED_FOODS, TEST_UNITS)["grams"] = 1
+    assert TEST_UNITS["13039"]["grams"] == 75.0
+
+
+def test_units_for_food_includes_default_unit_first():
+    from nutrition import units_for_food
+
+    assert units_for_food("kiwi, cru", CODED_FOODS, {}, TEST_UNITS) == [{"label": "fruit", "grams": 75.0}]
+
+
+def test_units_for_food_user_unit_overrides_default_grams():
+    from nutrition import add_food_unit, units_for_food
+
+    food_units: dict[str, list[dict]] = {}
+    add_food_unit("kiwi, cru", "Fruit", 90, CODED_FOODS, food_units)
+    units = units_for_food("kiwi, cru", CODED_FOODS, food_units, TEST_UNITS)
+    assert units == [{"label": "Fruit", "grams": 90}]  # une seule entrée : remplacée
+
+
+def test_units_for_food_user_adds_extra_unit_alongside_default():
+    from nutrition import add_food_unit, units_for_food
+
+    food_units: dict[str, list[dict]] = {}
+    add_food_unit("kiwi, cru", "barquette", 500, CODED_FOODS, food_units)
+    units = units_for_food("kiwi, cru", CODED_FOODS, food_units, TEST_UNITS)
+    assert units == [{"label": "fruit", "grams": 75.0}, {"label": "barquette", "grams": 500}]
+
+
+def test_every_ciqual_food_has_a_default_unit():
+    """Chaque aliment de foods.csv a une ligne dans config/unites_par_defaut.csv (à compléter
+    après une mise à jour Ciqual : build_foods.py liste les manquants)."""
+    path = ROOT / "foods.csv"
+    if not path.exists():
+        pytest.skip("foods.csv non généré")
+    pytest.importorskip("openpyxl")  # build_foods l'importe
+    from build_foods import foods_without_default_unit
+    from nutrition import default_unit_for
+
+    assert foods_without_default_unit(path) == []
+    foods = load_foods(path)
+    assert default_unit_for("Pain (aliment moyen)", foods) == {"label": "morceau", "grams": 50.0}
+    kiwi = default_unit_for("Kiwi, chair sans peau, avec pépins, cru", foods)
+    assert kiwi["label"] == "fruit" and 50 <= kiwi["grams"] <= 120

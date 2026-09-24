@@ -4,7 +4,7 @@ import textwrap
 
 import pytest
 
-from config import ConfigError, load_config
+from config import ConfigError, load_config, load_default_units
 
 VALID = """
 [nutrients.fer]
@@ -117,3 +117,56 @@ def test_syntax_error_missing_file_and_no_nutrients(tmp_path):
         load_config(tmp_path / "absent.toml")
     with pytest.raises(ConfigError, match="Aucun nutriment"):
         load_config(write(tmp_path, '[app]\ntitle = "x"\n'))
+
+
+# --- config/unites_par_defaut.csv ------------------------------------------------------------
+UNITS_HEADER = "alim_code,aliment,unite,grammes\n"
+
+
+def write_units(tmp_path, rows: str):
+    path = tmp_path / "unites.csv"
+    path.write_text(UNITS_HEADER + rows, encoding="utf-8")
+    return path
+
+
+def test_shipped_default_units_are_valid():
+    units = load_default_units()
+    assert len(units) > 2000
+    assert all(u is None or (u["label"] and u["grams"] > 0) for u in units.values())
+
+
+def test_default_units_are_parsed(tmp_path):
+    units = load_default_units(
+        write_units(tmp_path, '13039,"Kiwi, cru",fruit,75\n7000,Pain (aliment moyen),morceau,"50,5"\n11017,Sel,,\n')
+    )
+    assert units == {
+        "13039": {"label": "fruit", "grams": 75.0},
+        "7000": {"label": "morceau", "grams": 50.5},  # virgule décimale acceptée
+        "11017": None,  # unité et grammes vides : volontairement aucune unité
+    }
+
+
+@pytest.mark.parametrize(
+    "rows, expected",
+    [
+        ("1,x,fruit,abc\n", "nombre"),
+        ("1,x,fruit,0\n", "positif"),
+        ("1,x,fruit,-3\n", "positif"),
+        ("1,x,,150\n", "vide"),
+        ("1,x,Grammes,150\n", "réservé"),
+        (",x,fruit,150\n", "alim_code manquant"),
+        ("1,x,fruit,150\n1,y,pot,100\n", "deux fois"),
+    ],
+)
+def test_invalid_default_units_are_rejected(tmp_path, rows, expected):
+    with pytest.raises(ConfigError, match=expected):
+        load_default_units(write_units(tmp_path, rows))
+
+
+def test_default_units_bad_header_or_missing_file(tmp_path):
+    bad = tmp_path / "bad.csv"
+    bad.write_text("code,unite,grammes\n1,fruit,150\n", encoding="utf-8")
+    with pytest.raises(ConfigError, match="colonnes manquantes"):
+        load_default_units(bad)
+    with pytest.raises(ConfigError, match="introuvable"):
+        load_default_units(tmp_path / "absent.csv")

@@ -3,7 +3,10 @@
 Usage :  python build_foods.py "Table Ciqual 2025_FR_2025_11_03.xlsx" [foods.csv]
 Nécessite : pip install openpyxl   (uniquement sur ton ordinateur, pas dans l'app)
 
-Tout le paramétrage est dans config.toml :
+Signale ensuite les aliments qui n'ont pas encore d'unité par défaut dans
+config/unites_par_defaut.csv (nouveaux aliments d'une mise à jour Ciqual).
+
+Tout le paramétrage est dans config/config.toml :
   - [nutrients.<clé>] csv_column et ciqual : quelle colonne Ciqual alimente quelle colonne du CSV
   - [foods_build] : aliments écartés, traitement de "traces" et de "< x"
 
@@ -24,7 +27,7 @@ from pathlib import Path
 
 import openpyxl
 
-from config import load_config
+from config import DEFAULT_UNITS_PATH, load_config, load_default_units
 
 
 def parse_value(raw, below_limit_factor: float = 0.0, traces_value: float = 0.0) -> float | None:
@@ -113,9 +116,26 @@ def convert(xlsx_path: str | Path, csv_path: str | Path, config: dict | None = N
     return {"kept": kept, "dropped": dropped}
 
 
+def foods_without_default_unit(csv_path: str | Path, units_path: str | Path | None = None) -> list[tuple[str, str]]:
+    """Aliments de foods.csv absents de config/unites_par_defaut.csv : [(alim_code, nom), ...].
+
+    Utile après une mise à jour de la table Ciqual : les nouveaux aliments n'ont pas encore
+    d'unité par défaut (l'app les propose alors en grammes seulement) ; ajoute-leur une ligne.
+    """
+    units = load_default_units(units_path)
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        return [(r["alim_code"], r["aliment"]) for r in csv.DictReader(f) if r["alim_code"] not in units]
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         raise SystemExit(__doc__)
     config = load_config()
     out = sys.argv[2] if len(sys.argv) > 2 else Path(__file__).parent / config["app"]["foods_file"]
     print(convert(sys.argv[1], out, config), "->", out)
+    missing = foods_without_default_unit(out)
+    if missing:
+        print(f"\n{len(missing)} aliment(s) sans unité par défaut dans {DEFAULT_UNITS_PATH.name} "
+              "(proposés en grammes seulement) — ajoute-leur une ligne :")
+        for code, name in missing:
+            print(f"  {code},{name}")

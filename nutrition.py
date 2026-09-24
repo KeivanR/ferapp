@@ -1,6 +1,7 @@
 """Logique métier de l'application (aucune dépendance à Flet, donc testable seule).
 
 - base d'aliments chargée depuis foods.csv (valeurs pour 100 g)
+- unité familière par défaut de chaque aliment, lue dans config/unites_par_defaut.csv
 - apports de référence par nutriment selon le profil (âge, sexe, situation de la femme : règles, grossesse, allaitement),
   lus dans config.toml
 - calcul des apports du jour et du taux de complétion
@@ -17,7 +18,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from config import SCALAR_KEYS, load_config
+from config import SCALAR_KEYS, load_config, load_default_units
 
 # --------------------------------------------------------------------------- #
 # Nutriments et apports de référence : tout vient de config.toml
@@ -145,7 +146,11 @@ def normalize(text: str) -> str:
 
 
 def load_foods(path: str | Path) -> dict[str, dict]:
-    """Charge le CSV. Retourne {nom_normalisé: {"name": nom, "per100": {clé: valeur}, "custom": False}}."""
+    """Charge le CSV. Retourne {nom_normalisé: {"name", "code", "per100": {clé: valeur}, "custom": False}}.
+
+    "code" = alim_code Ciqual (None si le CSV n'a pas cette colonne, ex. foods_demo.csv) : c'est
+    lui qui relie l'aliment à son unité par défaut (voir default_unit_for).
+    """
     foods: dict[str, dict] = {}
     with open(path, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
@@ -154,14 +159,17 @@ def load_foods(path: str | Path) -> dict[str, dict]:
             for n in NUTRIENTS:
                 raw = (row.get(n["col"]) or "").strip().replace(",", ".")
                 per100[n["key"]] = float(raw) if raw else 0.0
-            foods[normalize(name)] = {"name": name, "per100": per100, "custom": False}
+            code = (row.get("alim_code") or "").strip() or None
+            foods[normalize(name)] = {"name": name, "code": code, "per100": per100, "custom": False}
     return foods
 
 
 def search_foods(query: str, foods: dict[str, dict], limit: int = SEARCH_LIMIT) -> list[str]:
     """Noms d'aliments correspondant à la saisie : début de nom d'abord, puis « contient
-    tous les mots ». Dans chaque groupe, tes aliments personnalisés passent en premier, puis
-    les noms les plus courts (les plus génériques)."""
+    tous les mots ». Dans chaque groupe : tes aliments personnalisés passent en premier, puis
+    le ou les « (aliment moyen) » correspondants (la valeur Ciqual la plus représentative,
+    ex. « Pain (aliment moyen) » pour la recherche « pain »), puis les noms les plus courts
+    (les plus génériques)."""
     q = normalize(query)
     if not q:
         return []
@@ -173,7 +181,12 @@ def search_foods(query: str, foods: dict[str, dict], limit: int = SEARCH_LIMIT) 
             contains.append(food)
 
     def rank(food: dict):
-        return (not food.get("custom"), len(food["name"]), food["name"])
+        return (
+            not food.get("custom"),
+            "(aliment moyen)" not in normalize(food["name"]),
+            len(food["name"]),
+            food["name"],
+        )
 
     return [f["name"] for f in sorted(starts, key=rank) + sorted(contains, key=rank)][:limit]
 
@@ -190,7 +203,11 @@ def find_food(name: str, foods: dict[str, dict]) -> dict | None:
 
 
 def parse_grams(text: str) -> float | None:
-    """'150', '150 g', '150,5' -> float. None si invalide ou <= 0."""
+    """'150', '150 g', '150,5' -> float. None si invalide ou <= 0.
+
+    Sert aussi à parser un nombre d'unités (ex. « 2 fruits ») : même règle (positif, virgule
+    ou point), voir ui/widgets.QuantityInput.
+    """
     cleaned = text.strip().lower().replace(",", ".").removesuffix("g").strip()
     try:
         grams = float(cleaned)
@@ -295,3 +312,96 @@ def merge_foods(official: dict[str, dict], custom_foods: list[dict]) -> dict[str
             "custom": True,
         }
     return merged
+
+
+# --------------------------------------------------------------------------- #
+# Unités familières (ex. « 1 fruit » = 150 g). Deux sources :
+#  - l'unité par défaut de chaque aliment Ciqual, estimée une fois pour toutes dans
+#    config/unites_par_defaut.csv (ordres de grandeur, corrigeables dans ce fichier) ;
+#  - celles que l'utilisateur définit lui-même pour un aliment (« + Nouvelle unité »),
+#    enregistrées dans son état (food_units).
+# La quantité saisie avec une unité est convertie en grammes avant d'être stockée dans le
+# journal : ce sont donc les seules fonctions du fichier à connaître les unités, le reste
+# (calculs, totaux...) continue de raisonner uniquement en grammes.
+# --------------------------------------------------------------------------- #
+DEFAULT_UNITS: dict[str, dict | None] = load_default_units()  # {alim_code: {"label", "grams"} ou None}
+
+
+def default_unit_for(
+    food_name: str, foods: dict[str, dict], default_units: dict[str, dict | None] | None = None
+) -> dict | None:
+    """Unité par défaut de cet aliment ({"label", "grams"}, copie), d'après son alim_code dans
+    config/unites_par_defaut.csv. None si l'aliment est inconnu, n'a pas de code (aliment
+    personnalisé), est absent du fichier ou y est volontairement sans unité.
+    `default_units` : pour tester avec un autre fichier (défaut : DEFAULT_UNITS)."""
+    default_units = DEFAULT_UNITS if default_units is None else default_units
+    food = find_food(food_name, foods)
+    if food is None or not food.get("code"):
+        return None
+    unit = default_units.get(food["code"])
+    return dict(unit) if unit else None
+
+
+def units_for_food(
+    food_name: str,
+    foods: dict[str, dict],
+    food_units: dict[str, list[dict]],
+    default_units: dict[str, dict | None] | None = None,
+) -> list[dict]:
+    """Unités familières proposées pour cet aliment : [{"label": "fruit", "grams": 150}, ...] —
+    son unité par défaut (default_unit_for), le cas échéant, suivie de celles que l'utilisateur
+    a définies. Si l'utilisateur en a défini une avec le même nom que l'unité par défaut (par ex.
+    pour corriger son poids), sa valeur remplace celle par défaut dans la liste.
+
+    Liste vide si l'aliment est inconnu ou n'a aucune unité ; la saisie reste alors possible en
+    grammes, toujours disponible (voir ui/widgets.QuantityInput).
+    """
+    food = find_food(food_name, foods)
+    if food is None:
+        return []
+    units: list[dict] = []
+    seen: set[str] = set()
+    default = default_unit_for(food_name, foods, default_units)
+    if default is not None:
+        units.append(default)
+        seen.add(normalize(default["label"]))
+    for u in food_units.get(normalize(food["name"]), []):
+        key = normalize(u["label"])
+        if key in seen:
+            units = [u if normalize(x["label"]) == key else x for x in units]
+        else:
+            units.append(u)
+            seen.add(key)
+    return units
+
+
+def add_food_unit(
+    food_name: str,
+    label: str,
+    grams: float,
+    foods: dict[str, dict],
+    food_units: dict[str, list[dict]],
+) -> dict:
+    """Ajoute une unité familière (ex. "fruit" = 150 g) pour cet aliment et la retourne.
+
+    Lève ValueError (message directement affichable) si l'aliment est inconnu, le nom
+    d'unité est vide, réservé ("grammes", l'unité de base toujours disponible) ou déjà pris
+    pour cet aliment, ou si les grammes ne sont pas strictement positifs.
+    """
+    food = find_food(food_name, foods)
+    if food is None:
+        raise ValueError("Aliment inconnu")
+    label = " ".join(label.split())
+    if not label:
+        raise ValueError("Donne un nom à l'unité")
+    if normalize(label) == "grammes":
+        raise ValueError("« grammes » est réservé, choisis un autre nom")
+    if grams <= 0:
+        raise ValueError("Le nombre de grammes doit être positif")
+    key = normalize(food["name"])
+    existing = food_units.setdefault(key, [])
+    if any(normalize(u["label"]) == normalize(label) for u in existing):
+        raise ValueError("Cette unité existe déjà pour cet aliment")
+    unit = {"label": label, "grams": grams}
+    existing.append(unit)
+    return unit
