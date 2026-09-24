@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import flet as ft
 
-from nutrition import Profile, WOMAN_STATUSES, recommended_intakes, selected_nutrients
+from nutrition import WOMAN_STATUSES, Profile, recommended_intakes, selected_nutrients
 
 from .context import AppContext
 from .widgets import fmt

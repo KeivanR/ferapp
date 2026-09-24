@@ -2,9 +2,11 @@ from pathlib import Path
 
 import pytest
 
+from build_foods import parse_value
 from nutrition import (
-    Profile,
+    ALL_KEYS,
     WOMAN_STATUSES,
+    Profile,
     completion,
     daily_totals,
     find_food,
@@ -13,6 +15,7 @@ from nutrition import (
     parse_grams,
     recommended_intakes,
     search_foods,
+    selected_nutrients,
 )
 
 ROOT = Path(__file__).parent.parent
@@ -158,7 +161,6 @@ def test_completion_can_exceed_one():
 
 
 # --- conversion Ciqual -------------------------------------------------------
-from build_foods import parse_value
 
 
 def test_parse_value_ciqual_formats():
@@ -226,7 +228,6 @@ def test_search_foods_no_aliment_moyen_is_unaffected():
 
 
 # --- choix des nutriments dans le profil -------------------------------------
-from nutrition import ALL_KEYS, selected_nutrients
 
 
 def test_profile_defaults_to_all_nutrients():
@@ -277,7 +278,7 @@ def test_real_csv_has_vitamins():
 
 # --- nutriment le plus apporté par une entrée --------------------------------
 def test_top_nutrient_uses_share_of_recommendation_not_raw_amount():
-    from nutrition import NUTRIENTS, selected_nutrients, top_nutrient
+    from nutrition import NUTRIENTS, top_nutrient
 
     recs = {n["key"]: 1e9 for n in NUTRIENTS} | {
         "fer": 16, "calcium": 950, "magnesium": 300, "zinc": 9, "potassium": 3500, "iode": 150, "selenium": 70,
@@ -405,7 +406,9 @@ def test_storage_defaults_and_old_files(tmp_path, monkeypatch):
     import storage
 
     monkeypatch.setenv("FLET_APP_STORAGE_DATA", str(tmp_path))
-    assert storage.load_state() == {"profile": None, "journal": {}, "custom_foods": [], "food_units": {}}
+    assert storage.load_state() == {
+        "profile": None, "journal": {}, "custom_foods": [], "food_units": {}, "last_units": {}
+    }
     # ancien fichier sans "custom_foods" ni "food_units"
     (tmp_path / "state.json").write_text(json.dumps({"profile": {"age": 30}, "journal": {}}))
     state = storage.load_state()
@@ -521,3 +524,42 @@ def test_every_ciqual_food_has_a_default_unit():
     assert default_unit_for("Pain (aliment moyen)", foods) == {"label": "morceau", "grams": 50.0}
     kiwi = default_unit_for("Kiwi, chair sans peau, avec pépins, cru", foods)
     assert kiwi["label"] == "fruit" and 50 <= kiwi["grams"] <= 120
+
+
+# --- unité présélectionnée : la dernière utilisée, sinon l'unité par défaut -------------------
+KIWI_UNITS = [{"label": "fruit", "grams": 75.0}, {"label": "barquette", "grams": 500}]
+
+
+def test_preferred_unit_is_default_unit_when_never_used():
+    from nutrition import GRAMS_UNIT, preferred_unit
+
+    assert preferred_unit("kiwi, cru", CODED_FOODS, KIWI_UNITS, {}) == "fruit"
+    assert preferred_unit("kiwi, cru", CODED_FOODS, [], {}) == GRAMS_UNIT  # aucune unité familière
+    assert preferred_unit("xyz", CODED_FOODS, KIWI_UNITS, {}) == GRAMS_UNIT  # aliment inconnu
+
+
+def test_preferred_unit_is_last_used_one():
+    from nutrition import GRAMS_UNIT, preferred_unit, remember_unit
+
+    last_units: dict[str, str] = {}
+    remember_unit("Kiwi, CRU", "barquette", CODED_FOODS, last_units)  # clé normalisée
+    assert last_units == {"kiwi, cru": "barquette"}
+    assert preferred_unit("kiwi, cru", CODED_FOODS, KIWI_UNITS, last_units) == "barquette"
+    remember_unit("kiwi, cru", GRAMS_UNIT, CODED_FOODS, last_units)  # les grammes se retiennent aussi
+    assert preferred_unit("kiwi, cru", CODED_FOODS, KIWI_UNITS, last_units) == GRAMS_UNIT
+
+
+def test_preferred_unit_falls_back_when_last_unit_is_gone():
+    from nutrition import preferred_unit
+
+    last_units = {"kiwi, cru": "Barquette"}
+    assert preferred_unit("kiwi, cru", CODED_FOODS, KIWI_UNITS, last_units) == "barquette"  # casse ignorée
+    assert preferred_unit("kiwi, cru", CODED_FOODS, KIWI_UNITS[:1], last_units) == "fruit"  # disparue
+
+
+def test_remember_unit_ignores_unknown_food():
+    from nutrition import remember_unit
+
+    last_units: dict[str, str] = {}
+    remember_unit("xyz", "fruit", CODED_FOODS, last_units)
+    assert last_units == {}

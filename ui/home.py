@@ -7,7 +7,15 @@ import datetime
 
 import flet as ft
 
-from nutrition import completion, daily_totals, recommended_intakes, selected_nutrients, top_nutrient
+from nutrition import (
+    completion,
+    daily_totals,
+    find_food,
+    recommended_intakes,
+    search_foods,
+    selected_nutrients,
+    top_nutrient,
+)
 
 from .context import AppContext
 from .style import COLOR_DONE, COLOR_TODO, RING_SIZE, RING_SIZE_MAX, RING_STROKE
@@ -39,11 +47,39 @@ def show_main(ctx: AppContext) -> None:
 
     # La quantité se saisit en grammes ou dans une unité familière propre à l'aliment (ex. « 2
     # fruits ») — voir ui/widgets.QuantityInput. `on_food_changed` la relie au champ aliment pour
-    # recharger ses unités à chaque fois qu'il change.
-    food_field, suggestions_col = make_food_input(
-        ctx, lambda e: add_entry(), on_food_changed=lambda name: quantity.set_food(name), expand=True
+    # recharger ses unités à chaque fois qu'il change. La barre « Quantité » n'est affichée qu'une
+    # fois un aliment reconnu (choisi dans les suggestions ou tapé exactement) ; elle disparaît
+    # après l'ajout. Pas de bouton pour valider : Entrée dans le champ quantité ajoute l'aliment ;
+    # Entrée dans le champ aliment choisit la 1re suggestion si besoin puis passe à la quantité
+    # (ou ajoute directement si elle est déjà remplie).
+    def on_food_changed(name: str) -> None:
+        quantity_row.visible = find_food(name, ctx.foods) is not None
+        quantity.set_food(name)  # rafraîchit aussi la page
+
+    async def on_quantity_submit(e=None):
+        await add_entry()
+
+    async def on_food_submit(e=None):
+        if find_food(food_field.value or "", ctx.foods) is None:
+            matches = search_foods(food_field.value or "", ctx.foods)
+            if not matches:
+                food_field.error = "Choisis un aliment dans la liste"
+                page.update()
+                return
+            food_field.value = matches[0]  # ex. « Pain (aliment moyen) » en tapant « pain »
+            food_field.error = None
+            suggestions_col.controls = []
+            on_food_changed(matches[0])
+        if quantity.is_empty():
+            await quantity.focus()
+        else:
+            await add_entry()
+
+    food_field, suggestions_col = make_food_input(ctx, on_food_submit, on_food_changed=on_food_changed, expand=True)
+    quantity = QuantityInput(
+        ctx, on_submit=on_quantity_submit, hint_text="Tape la quantité puis Entrée", expand=True
     )
-    quantity = QuantityInput(ctx, on_submit=lambda e: add_entry(), width=140)
+    quantity_row = ft.Row([quantity.control], visible=False)
 
     def build_ring(n: dict, ratio: float, total: float, rec: float, size: int) -> ft.Control:
         done = ratio >= 1
@@ -125,18 +161,23 @@ def show_main(ctx: AppContext) -> None:
             on_click=lambda ev, i=i: open_edit(i),
         )
 
-    def add_entry(e=None):
+    async def add_entry(e=None):
+        """Ajoute l'aliment saisi au journal du jour (déclenché par Entrée, pas de bouton)."""
+        if not (food_field.value or "").strip() and quantity.is_empty():
+            return  # Entrée sur des champs vides : rien à faire, pas de message d'erreur
         checked = validate_with_quantity(ctx, food_field, quantity)
         if checked is None:
             return
         food, grams = checked
         ctx.entries_today().append({"food": food["name"], "grams": grams})
+        ctx.remember_unit(food["name"], quantity.unit_label)  # présélectionnée la prochaine fois
         ctx.save()
         food_field.value = ""
         suggestions_col.controls = []
         quantity.reset()
-        quantity.set_food("")  # aliment vidé : plus d'unités tant qu'on n'en retape pas un
+        on_food_changed("")  # aliment vidé : barre « Quantité » masquée jusqu'au prochain aliment
         refresh()
+        await food_field.focus()  # prêt pour l'aliment suivant
 
     def delete_entry(index: int):
         entries = ctx.entries_today()
@@ -210,17 +251,17 @@ def show_main(ctx: AppContext) -> None:
                         ft.Container(height=16),
                         ft.Row([food_field]),
                         suggestions_col,
-                        quantity.control,
+                        quantity_row,
                         ft.Row(
                             [
-                                ft.FilledButton("Ajouter", icon=ft.Icons.ADD, on_click=add_entry),
+                                # Ouvre l'écran de création d'un aliment personnalisé (ui/custom_food.py).
                                 ft.TextButton(
-                                    "Nouvel aliment",
+                                    "Ajouter",
                                     icon=ft.Icons.ADD_CIRCLE_OUTLINE,
+                                    tooltip="Ajouter un aliment qui n'est pas dans la liste",
                                     on_click=lambda e: ctx.router.show_custom_food(),
                                 ),
                             ],
-                            wrap=True,
                         ),
                         ft.Divider(height=24),
                         ft.Text("Repas du jour", size=18, weight=ft.FontWeight.W_600),

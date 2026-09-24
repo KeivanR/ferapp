@@ -33,9 +33,14 @@ pytest                        # tests (dossier tests/, à lancer depuis la racin
 - **Cercles de complétion** : juste sous le titre, centrés. Leur taille dépend du nombre de nutriments suivis dans
   le profil (`ring_size_max` dans `config.toml`) : un seul nutriment suivi -> un très grand cercle, beaucoup de
   nutriments -> des cercles plus petits (jusqu'au minimum `ring_size`) pour tous les faire tenir.
-- **Ajouter** : tape l'aliment (suggestions pendant la frappe — tes aliments personnalisés en tête, puis le ou les
-  « aliment moyen » correspondants s'il y en a, ex. « Pain (aliment moyen) » en tapant « pain », puis les noms les
-  plus courts), puis choisis la quantité dans le menu déroulant « Unité ». « Grammes » est toujours proposé ; à côté,
+- **Saisir un repas** : tape l'aliment (suggestions pendant la frappe — tes aliments personnalisés en tête, puis le
+  ou les « aliment moyen » correspondants s'il y en a, ex. « Pain (aliment moyen) » en tapant « pain », puis les noms
+  les plus courts), puis la quantité dans la barre « Quantité » et appuie sur **Entrée** : l'aliment est ajouté au
+  repas du jour (il n'y a pas de bouton de validation). La barre « Quantité » n'apparaît qu'une fois un aliment
+  choisi (clic sur une suggestion, ou Entrée dans le champ aliment, qui prend la 1re suggestion) et disparaît après l'ajout.
+  La barre « Quantité » affiche à droite l'unité utilisée ; la petite flèche déroule la liste des unités, chacune
+  avec son équivalent (« fruit (≈ 75 g) »). L'unité présélectionnée est celle que tu as utilisée la dernière fois pour cet
+  aliment (grammes compris) ; pour un aliment jamais saisi, c'est son unité par défaut (pas les grammes). « Grammes » est toujours proposé ; à côté,
   **chaque aliment Ciqual a une unité par défaut** (« fruit » pour un kiwi, « tranche » pour du jambon, « verre »
   pour du lait, « cuillère à soupe » pour de l'huile, « assiette » pour des pâtes cuites...), avec son équivalent
   estimé en grammes (voir « Unités par défaut » plus bas). Une fois l'unité choisie, une ligne sous le champ
@@ -45,7 +50,8 @@ pytest                        # tests (dossier tests/, à lancer depuis la racin
   on corrige son poids pour soi (ex. « fruit » = 100 g si tes kiwis sont gros).
 - **Nutriment principal** : sous chaque entrée s'affiche le nutriment (parmi ceux choisis dans le profil) dont elle
   couvre la plus grande part de l'apport journalier recommandé, avec la quantité ingérée.
-- **Nouvel aliment** : le bouton « Nouvel aliment » crée un aliment personnalisé, soit en saisissant ses
+- **Ajouter** (aliment absent de la liste) : le bouton « Ajouter », sous la quantité, ouvre l'écran « Ajouter un
+  aliment », qui explique en quelques mots à quoi il sert. On y crée un aliment personnalisé, soit en saisissant ses
   teneurs pour 100 g (case vide = 0), soit comme une recette (liste d'aliments avec leurs grammages, poids final
   facultatif). Il apparaît en orange (« · perso ») et en tête des suggestions ; le nom doit être unique.
   Une recette est calculée à l'enregistrement : modifier plus tard un de ses ingrédients ne la met pas à jour.
@@ -127,7 +133,7 @@ nutrition_app/
     ├── welcome.py                      écran de bienvenue (premier lancement)
     ├── profile_view.py                  fiche du profil (lecture seule)
     ├── profile_edit.py                   formulaire du profil
-    ├── custom_food.py                     écran « Nouvel aliment »
+    ├── custom_food.py                     écran « Ajouter un aliment »
     └── home.py                             page principale (saisie, cercles, journal)
 ```
 

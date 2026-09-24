@@ -21,7 +21,8 @@ def load_state() -> dict:
     """{"profile": {...} | None,
     "journal": {"YYYY-MM-DD": [{"food": str, "grams": float}]},
     "custom_foods": [{"name": str, "per100": {...}, "kind": "manual" | "recipe", ...}],
-    "food_units": {nom_normalisé: [{"label": str, "grams": float}, ...]}}"""
+    "food_units": {nom_normalisé: [{"label": str, "grams": float}, ...]},
+    "last_units": {nom_normalisé: label de la dernière unité utilisée pour cet aliment}}"""
     try:
         state = json.loads(_data_file().read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
@@ -31,6 +32,7 @@ def load_state() -> dict:
     state.setdefault("journal", {})
     state.setdefault("custom_foods", [])
     state.setdefault("food_units", {})
+    state.setdefault("last_units", {})
     return state
 
 

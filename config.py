@@ -170,7 +170,8 @@ def load_config(path: str | Path | None = None) -> dict:
                 raise ConfigError(f"{where} : « {req} » doit être un texte")
         if block["csv_column"] in seen_columns:
             raise ConfigError(
-                f"{where} : la colonne « {block['csv_column']} » est déjà utilisée par {seen_columns[block['csv_column']]}"
+                f"{where} : la colonne « {block['csv_column']} » est déjà utilisée par "
+                f"{seen_columns[block['csv_column']]}"
             )
         seen_columns[block["csv_column"]] = key
 

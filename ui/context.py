@@ -14,9 +14,9 @@ from typing import Callable, Optional
 
 import flet as ft
 
-from nutrition import Profile, merge_foods
+from nutrition import Profile, merge_foods, preferred_unit, units_for_food
 from nutrition import add_food_unit as _add_food_unit
-from nutrition import units_for_food
+from nutrition import remember_unit as _remember_unit
 from storage import save_state
 
 
@@ -43,7 +43,7 @@ class AppContext:
     """
 
     page: ft.Page
-    state: dict  # voir storage.load_state : {"profile", "journal", "custom_foods", "food_units"}
+    state: dict  # voir storage.load_state : {"profile", "journal", "custom_foods", "food_units", "last_units"}
     foods: dict[str, dict]  # base officielle + aliments personnalisés (nutrition.merge_foods)
     official_foods: dict[str, dict] = field(default_factory=dict)  # pour recalculer `foods`
     router: Router = field(default_factory=Router)
@@ -72,6 +72,15 @@ class AppContext:
     def units_for(self, food_name: str) -> list[dict]:
         """Unités familières connues pour cet aliment (voir nutrition.units_for_food)."""
         return units_for_food(food_name, self.foods, self.state["food_units"])
+
+    def preferred_unit_for(self, food_name: str, units: list[dict]) -> str:
+        """Unité à présélectionner pour cet aliment (voir nutrition.preferred_unit)."""
+        return preferred_unit(food_name, self.foods, units, self.state["last_units"])
+
+    def remember_unit(self, food_name: str, label: str) -> None:
+        """Retient la dernière unité utilisée pour cet aliment. Ne sauvegarde pas : c'est fait
+        avec l'entrée du journal qui l'accompagne (voir ui/home.add_entry)."""
+        _remember_unit(food_name, label, self.foods, self.state["last_units"])
 
     def add_food_unit(self, food_name: str, label: str, grams: float) -> dict:
         """Ajoute une unité pour cet aliment et sauvegarde. Peut lever ValueError (message

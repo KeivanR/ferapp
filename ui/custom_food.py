@@ -1,12 +1,13 @@
-"""Écran « Nouvel aliment » : ajoute un aliment personnalisé, saisi à la main (teneurs pour
-100 g) ou en recette (liste d'aliments existants avec leur grammage).
+"""Écran « Ajouter un aliment » (bouton « Ajouter » de la page principale) : crée un aliment
+personnalisé, saisi à la main (teneurs pour 100 g) ou en recette (liste d'aliments existants
+avec leur grammage).
 """
 
 from __future__ import annotations
 
 import flet as ft
 
-from nutrition import NUTRIENTS, normalize, parse_grams, parse_nutrient_value, recipe_per100
+from nutrition import GRAMS_UNIT, NUTRIENTS, normalize, parse_grams, parse_nutrient_value, recipe_per100
 
 from .context import AppContext
 from .style import COLOR_CUSTOM
@@ -166,8 +167,8 @@ def show_custom_food(ctx: AppContext) -> None:
             if not unit_label:
                 unit_label_field.error = "Donne un nom à l'unité"
                 ok = False
-            elif normalize(unit_label) == "grammes":
-                unit_label_field.error = "« grammes » est réservé, choisis un autre nom"
+            elif normalize(unit_label) == GRAMS_UNIT:
+                unit_label_field.error = f"« {GRAMS_UNIT} » est réservé, choisis un autre nom"
                 ok = False
             if not unit_grams_text:
                 unit_grams_field.error = "Indique le nombre de grammes"
@@ -234,13 +235,26 @@ def show_custom_food(ctx: AppContext) -> None:
                                 ft.IconButton(
                                     ft.Icons.ARROW_BACK, tooltip="Retour", on_click=lambda e: ctx.router.show_main()
                                 ),
-                                ft.Text("Nouvel aliment", size=24, weight=ft.FontWeight.BOLD),
+                                ft.Text("Ajouter un aliment", size=24, weight=ft.FontWeight.BOLD),
                             ]
                         ),
                         ft.Text(
-                            "Il apparaîtra en orange dans les suggestions : il ne vient pas de la base officielle.",
-                            color=COLOR_CUSTOM,
-                            size=13,
+                            spans=[
+                                ft.TextSpan(
+                                    "Tu ne trouves pas un aliment dans la liste ? Ajoute-le ici, en saisissant "
+                                    "ses nutriments ou comme une recette faite d'autres aliments. Il apparaîtra "
+                                    "ensuite "
+                                ),
+                                ft.TextSpan(
+                                    "en orange, avec la mention « perso »",
+                                    style=ft.TextStyle(color=COLOR_CUSTOM, weight=ft.FontWeight.W_600),
+                                ),
+                                ft.TextSpan(
+                                    ", en tête des suggestions quand tu le tapes, pour le distinguer des "
+                                    "aliments de la base officielle."
+                                ),
+                            ],
+                            size=14,
                         ),
                         name_field,
                         ft.Row([unit_label_field, unit_grams_field], wrap=True, spacing=10, run_spacing=10),

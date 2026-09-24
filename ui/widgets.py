@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import flet as ft
 
-from nutrition import find_food, normalize, parse_grams, search_foods
+from nutrition import GRAMS_UNIT, find_food, normalize, parse_grams, search_foods
 
 from .context import AppContext
 from .style import COLOR_CUSTOM
@@ -111,73 +111,70 @@ def _fmt_grams(value: float) -> str:
 
 
 class QuantityInput:
-    """Saisie d'une quantité en grammes ou dans une unité familière propre à l'aliment, via un
-    menu déroulant — voir nutrition.units_for_food / nutrition.default_unit_for /
-    nutrition.add_food_unit.
+    """Saisie d'une quantité dans une unité familière propre à l'aliment ou en grammes, dans UNE
+    seule barre : on tape le nombre dans le champ, et l'unité est affichée à droite du champ,
+    avec une flèche qui déroule la liste des unités — voir nutrition.units_for_food /
+    nutrition.default_unit_for / nutrition.add_food_unit.
 
-    Le menu propose toujours « Grammes », suivi des unités connues pour l'aliment actuellement
-    saisi : son unité par défaut (config/unites_par_defaut.csv, ex. « fruit » pour un kiwi,
-    « assiette » pour des pâtes cuites) et celles que l'utilisateur a lui-même ajoutées. La
-    dernière option, « + Nouvelle unité », ouvre une fenêtre pour en définir une (ce qui
-    redéfinit aussi, pour cet aliment, le poids d'une unité par défaut du même nom) ; elle
-    n'apparaît qu'une fois l'aliment reconnu. Sous le champ, une ligne rappelle l'équivalence
-    utilisée (« 1 tranche ≈ 30 g », puis « 2 × 30 g = 60 g » dès qu'un nombre est tapé), pour
-    que l'estimation reste visible et vérifiable. Rechargé via `set_food()` à chaque fois que
-    l'aliment saisi change (relie ça au `on_food_changed` de `make_food_input`).
+    L'unité présélectionnée pour un aliment est la dernière utilisée pour lui, sinon son unité
+    par défaut, sinon les grammes (nutrition.preferred_unit) ; `unit_label` donne l'unité choisie
+    au moment de l'ajout, pour la retenir (AppContext.remember_unit).
+
+    La liste propose toujours « Grammes », suivi des unités connues pour l'aliment actuellement
+    saisi, chacune avec son équivalent (« fruit (≈ 75 g) ») : son unité par défaut
+    (config/unites_par_defaut.csv) et celles que l'utilisateur a lui-même ajoutées. La dernière
+    option, « + Nouvelle unité », ouvre une fenêtre pour en définir une (ce qui redéfinit aussi,
+    pour cet aliment, le poids d'une unité par défaut du même nom) ; elle n'apparaît qu'une fois
+    l'aliment reconnu. Sous le champ, une ligne rappelle l'équivalence utilisée (« 1 tranche ≈
+    30 g », puis « 2 × 30 g = 60 g » dès qu'un nombre est tapé). Rechargé via `set_food()` à
+    chaque fois que l'aliment saisi change (relie ça au `on_food_changed` de `make_food_input`).
 
     Usage : crée l'instance, place `quantity.control` dans la page, appelle `set_food(nom)`
     quand l'aliment change, `resolve()` pour obtenir les grammes au moment de valider, `reset()`
-    après un ajout réussi.
+    après un ajout réussi. Entrée dans le champ déclenche `on_submit`.
     """
 
-    GRAMS = "grammes"
-    NEW_UNIT = "__nouvelle_unite__"  # valeur sentinelle : une action, jamais une vraie unité
+    GRAMS = GRAMS_UNIT
 
     def __init__(self, ctx: AppContext, on_submit=None, **count_field_kwargs):
         self.ctx = ctx
         self._food_name = ""
         self._units: list[dict] = []
-        self._last_value = self.GRAMS  # pour revenir dessus si "+ Nouvelle unité" est choisi
+        self._value = self.GRAMS  # unité choisie : GRAMS ou le label d'une unité de self._units
 
+        self._unit_text = ft.Text(self.GRAMS)
+        self.unit_menu = ft.PopupMenuButton(
+            content=ft.Container(
+                ft.Row([self._unit_text, ft.Icon(ft.Icons.ARROW_DROP_DOWN)], tight=True, spacing=0),
+                padding=ft.Padding.only(left=8, right=8),
+            ),
+            items=[],
+            menu_position=ft.PopupMenuPosition.UNDER,
+            tooltip="Choisir l'unité",
+        )
         self.count_field = ft.TextField(
-            label="Grammes",
+            label="Quantité",
             keyboard_type=ft.KeyboardType.NUMBER,
             on_submit=on_submit,
             helper_max_lines=2,
+            suffix_icon=self.unit_menu,
             **count_field_kwargs,
         )
         self.count_field.on_change = self._on_count_change
+        self.control = self.count_field
+        self._rebuild_menu()
 
-        self.unit_dropdown = ft.Dropdown(
-            label="Unité",
-            value=self.GRAMS,
-            options=[ft.DropdownOption(key=self.GRAMS, text="Grammes")],
-            on_select=self._on_unit_select,
-            width=200,  # assez pour « cuillère à soupe » sans couper le texte
-        )
-
-        self.control = ft.Row([self.unit_dropdown, self.count_field], vertical_alignment=ft.CrossAxisAlignment.START)
-
-    def _on_count_change(self, e=None):
-        changed = bool(self.count_field.error)
-        self.count_field.error = None
-        if self.unit_dropdown.value != self.GRAMS:
-            self._update_label()
-            changed = True
-        if changed:
-            self.ctx.page.update()
-
+    # --- état affiché ------------------------------------------------------------------------
     def _current_unit(self) -> dict | None:
-        return next((u for u in self._units if u["label"] == self.unit_dropdown.value), None)
+        return next((u for u in self._units if u["label"] == self._value), None)
 
-    def _update_label(self):
-        """Libellé du champ + ligne d'aide qui montre l'équivalence en grammes de l'unité choisie."""
-        unit = self._current_unit() if self.unit_dropdown.value != self.GRAMS else None
+    def _update_display(self) -> None:
+        """Unité affichée dans la barre + ligne d'aide (équivalence en grammes de l'unité choisie)."""
+        unit = self._current_unit()
+        self._unit_text.value = unit["label"] if unit else self.GRAMS
         if unit is None:
-            self.count_field.label = "Grammes"
             self.count_field.helper = None
             return
-        self.count_field.label = "Nombre"  # l'unité est rappelée juste dessous (helper)
         count = parse_grams(self.count_field.value or "")
         if count is None:
             self.count_field.helper = f"1 {unit['label']} ≈ {_fmt_grams(unit['grams'])} g"
@@ -185,37 +182,57 @@ class QuantityInput:
             total = count * unit["grams"]
             self.count_field.helper = f"{_fmt_grams(count)} × {_fmt_grams(unit['grams'])} g = {_fmt_grams(total)} g"
 
-    def _rebuild_options(self, keep_value: str) -> None:
-        options = [ft.DropdownOption(key=self.GRAMS, text="Grammes")]
-        options += [ft.DropdownOption(key=u["label"], text=u["label"]) for u in self._units]
+    def _rebuild_menu(self) -> None:
+        items = [ft.PopupMenuItem(content="Grammes", on_click=lambda e: self._select(self.GRAMS))]
+        items += [
+            ft.PopupMenuItem(
+                content=f"{u['label']} (≈ {_fmt_grams(u['grams'])} g)",
+                on_click=lambda e, label=u["label"]: self._select(label),
+            )
+            for u in self._units
+        ]
         if find_food(self._food_name, self.ctx.foods) is not None:
-            options.append(ft.DropdownOption(key=self.NEW_UNIT, text="+ Nouvelle unité"))
-        self.unit_dropdown.options = options
-        known = {self.GRAMS} | {u["label"] for u in self._units}
-        self.unit_dropdown.value = keep_value if keep_value in known else self.GRAMS
-        self._last_value = self.unit_dropdown.value
-        self._update_label()
+            items.append(ft.PopupMenuItem(content="+ Nouvelle unité", on_click=lambda e: self._open_new_unit_dialog()))
+        self.unit_menu.items = items
+        if self._value != self.GRAMS and self._current_unit() is None:
+            self._value = self.GRAMS  # unité inconnue pour ce nouvel aliment : retour aux grammes
+        self._update_display()
 
+    # --- événements -----------------------------------------------------------------------------
+    def _on_count_change(self, e=None):
+        changed = bool(self.count_field.error)
+        self.count_field.error = None
+        if self._value != self.GRAMS:
+            self._update_display()
+            changed = True
+        if changed:
+            self.ctx.page.update()
+
+    def _select(self, label: str) -> None:
+        self._value = label
+        self._update_display()
+        self.ctx.page.update()
+
+    # --- API --------------------------------------------------------------------------------------
     def set_food(self, food_name: str) -> None:
-        """À appeler quand l'aliment saisi change : recharge la suggestion et les unités connues
-        pour ce nouvel aliment (et revient à « grammes » si l'unité choisie n'existe plus pour lui)."""
+        """À appeler quand l'aliment saisi change : recharge les unités connues pour ce nouvel
+        aliment et présélectionne la dernière utilisée (sinon son unité par défaut)."""
         self._food_name = food_name or ""
         self._units = self.ctx.units_for(self._food_name) if self._food_name else []
-        self._rebuild_options(keep_value=self.unit_dropdown.value)
+        self._value = self.ctx.preferred_unit_for(self._food_name, self._units)
+        self._rebuild_menu()
         self.ctx.page.update()
 
-    def _on_unit_select(self, e=None) -> None:
-        if self.unit_dropdown.value == self.NEW_UNIT:
-            # "+ Nouvelle unité" est une action, pas un choix : on revient à la sélection
-            # précédente pendant que la fenêtre est ouverte.
-            self.unit_dropdown.value = self._last_value
-            self._update_label()
-            self.ctx.page.update()
-            self._open_new_unit_dialog()
-            return
-        self._last_value = self.unit_dropdown.value
-        self._update_label()
-        self.ctx.page.update()
+    @property
+    def unit_label(self) -> str:
+        """Unité actuellement choisie : GRAMS ou le label d'une unité familière."""
+        return self._value
+
+    def is_empty(self) -> bool:
+        return not (self.count_field.value or "").strip()
+
+    async def focus(self) -> None:
+        await self.count_field.focus()
 
     def resolve(self) -> float | None:
         """Grammes correspondant à la saisie, ou None en affichant l'erreur sous le champ
@@ -224,18 +241,16 @@ class QuantityInput:
         if count is None:
             self.count_field.error = "Invalide"
             return None
-        if self.unit_dropdown.value == self.GRAMS:
-            return count
-        unit = next((u for u in self._units if u["label"] == self.unit_dropdown.value), None)
-        return count * unit["grams"] if unit else count  # unité disparue : repli grammes
+        unit = self._current_unit()
+        return count * unit["grams"] if unit else count
 
     def reset(self) -> None:
-        """Vide la saisie après un ajout réussi ; garde l'aliment et ses unités chargées."""
+        """Vide la saisie après un ajout réussi (l'unité est de nouveau présélectionnée au prochain
+        `set_food`)."""
         self.count_field.value = ""
         self.count_field.error = None
-        self.unit_dropdown.value = self.GRAMS
-        self._last_value = self.GRAMS
-        self._update_label()
+        self._value = self.GRAMS
+        self._update_display()
 
     def _open_new_unit_dialog(self) -> None:
         page = self.ctx.page
@@ -266,7 +281,8 @@ class QuantityInput:
                 return
             page.pop_dialog()
             self._units = self.ctx.units_for(self._food_name)
-            self._rebuild_options(keep_value=unit["label"])  # sélectionne la nouvelle unité
+            self._value = unit["label"]  # sélectionne la nouvelle unité
+            self._rebuild_menu()
             page.update()
 
         page.show_dialog(

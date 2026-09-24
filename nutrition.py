@@ -2,7 +2,8 @@
 
 - base d'aliments chargée depuis foods.csv (valeurs pour 100 g)
 - unité familière par défaut de chaque aliment, lue dans config/unites_par_defaut.csv
-- apports de référence par nutriment selon le profil (âge, sexe, situation de la femme : règles, grossesse, allaitement),
+- apports de référence par nutriment selon le profil (âge, sexe, situation de la femme : règles,
+  grossesse, allaitement),
   lus dans config.toml
 - calcul des apports du jour et du taux de complétion
 
@@ -25,7 +26,8 @@ from config import SCALAR_KEYS, load_config, load_default_units
 # --------------------------------------------------------------------------- #
 CONFIG = load_config()
 NUTRIENTS: list[dict] = CONFIG["nutrients"]  # {"key", "label", "unit", "group", "col", "ciqual"}
-REFERENCES: dict[str, dict] = CONFIG["references"]  # par nutriment : homme, femme, femme_regles, femme_regles_abondantes, grossesse, allaitement
+# Par nutriment : homme, femme, femme_regles, femme_regles_abondantes, grossesse, allaitement
+REFERENCES: dict[str, dict] = CONFIG["references"]
 SEARCH_LIMIT: int = CONFIG["app"]["suggestions_max"]
 AGE_MIN: int = CONFIG["profile"]["age_min"]
 AGE_MAX: int = CONFIG["profile"]["age_max"]
@@ -324,6 +326,7 @@ def merge_foods(official: dict[str, dict], custom_foods: list[dict]) -> dict[str
 # journal : ce sont donc les seules fonctions du fichier à connaître les unités, le reste
 # (calculs, totaux...) continue de raisonner uniquement en grammes.
 # --------------------------------------------------------------------------- #
+GRAMS_UNIT = "grammes"  # unité de base, toujours proposée ; nom réservé (voir add_food_unit)
 DEFAULT_UNITS: dict[str, dict | None] = load_default_units()  # {alim_code: {"label", "grams"} ou None}
 
 
@@ -394,8 +397,8 @@ def add_food_unit(
     label = " ".join(label.split())
     if not label:
         raise ValueError("Donne un nom à l'unité")
-    if normalize(label) == "grammes":
-        raise ValueError("« grammes » est réservé, choisis un autre nom")
+    if normalize(label) == GRAMS_UNIT:
+        raise ValueError(f"« {GRAMS_UNIT} » est réservé, choisis un autre nom")
     if grams <= 0:
         raise ValueError("Le nombre de grammes doit être positif")
     key = normalize(food["name"])
@@ -405,3 +408,30 @@ def add_food_unit(
     unit = {"label": label, "grams": grams}
     existing.append(unit)
     return unit
+
+
+def preferred_unit(
+    food_name: str, foods: dict[str, dict], units: list[dict], last_units: dict[str, str]
+) -> str:
+    """Unité à présélectionner pour cet aliment, parmi GRAMS_UNIT et `units` (celles de
+    units_for_food) : la dernière que l'utilisateur a utilisée pour lui (`last_units`, voir
+    remember_unit), si elle existe encore ; sinon la première unité familière (son unité par
+    défaut) ; sinon les grammes. Retourne le label exact, tel qu'il figure dans `units`."""
+    food = find_food(food_name, foods)
+    if food is None:
+        return GRAMS_UNIT
+    last = last_units.get(normalize(food["name"]))
+    if last is not None:
+        if normalize(last) == GRAMS_UNIT:
+            return GRAMS_UNIT
+        match = next((u["label"] for u in units if normalize(u["label"]) == normalize(last)), None)
+        if match is not None:
+            return match
+    return units[0]["label"] if units else GRAMS_UNIT
+
+
+def remember_unit(food_name: str, label: str, foods: dict[str, dict], last_units: dict[str, str]) -> None:
+    """Retient `label` comme dernière unité utilisée pour cet aliment (ignoré s'il est inconnu)."""
+    food = find_food(food_name, foods)
+    if food is not None:
+        last_units[normalize(food["name"])] = label
