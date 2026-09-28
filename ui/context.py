@@ -34,6 +34,8 @@ class Router:
     show_profile_edit: Optional[Callable[[], None]] = None
     show_custom_food: Optional[Callable[[], None]] = None
     show_main: Optional[Callable[[], None]] = None
+    show_week: Optional[Callable[[], None]] = None
+    show_resources: Optional[Callable[[], None]] = None
 
 
 @dataclass

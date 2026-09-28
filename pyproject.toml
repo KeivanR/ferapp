@@ -12,3 +12,10 @@ org = "com.example"
 [tool.pytest.ini_options]
 testpaths = ["tests"]  # `pytest` depuis la racine du projet lance tous les tests de tests/
 pythonpath = ["."]     # pour que les tests importent nutrition.py, config.py... sans installation
+
+[tool.ruff]
+# Vérification du style : `ruff check .` (erreurs) et `ruff format .` (mise en forme automatique).
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]  # erreurs, pyflakes, avertissements, ordre des imports

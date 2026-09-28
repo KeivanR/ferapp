@@ -15,6 +15,7 @@ flet run --web main.py        # dans le navigateur
 flet run --android main.py    # sur ton téléphone via l'app "Flet" (Play Store / App Store)
 flet build apk                # APK autonome (nécessite le SDK Flutter/Android, non testé ici)
 pytest                        # tests (dossier tests/, à lancer depuis la racine du projet)
+ruff check . && ruff format . # vérifie le code et le remet en forme (pip install ruff ; réglages dans pyproject.toml)
 ```
 
 ## Utilisation
@@ -24,15 +25,28 @@ pytest                        # tests (dossier tests/, à lancer depuis la racin
   - un profil existe déjà -> la page principale s'ouvre directement ;
   - premier lancement, aucun profil enregistré -> un écran de bienvenue invite à créer son profil avant de
     proposer quoi que ce soit d'autre (bouton « Remplir mon profil »).
+- **Barre du bas** : trois onglets, toujours accessibles une fois le profil créé :
+  - **Accueil** : la page du jour (cercles, saisie des repas, repas du jour) ;
+  - **Semaine** : un tableau des nutriments suivis (lignes) jour par jour du lundi au dimanche (colonnes). Chaque
+    case donne la part de l'apport recommandé atteinte ce jour-là (coche verte = atteint, « – » = rien noté) et
+    chaque ligne sa moyenne sur les jours notés. Les flèches en haut font défiler les semaines passées ;
+  - **Ressources** : des liens utiles (carence en fer, recommandations alimentaires, sources des données) et une
+    FAQ dépliable, question par question. Tout ce contenu est dans `config/ressources.toml`.
 - **Profil** : l'icône en haut de la page principale ouvre une **fiche en lecture seule** (âge, sexe, situation,
   et l'apport recommandé de chaque nutriment suivi) — rien n'y est modifiable directement. Le bouton « Modifier »
   de cette fiche ouvre le formulaire : âge, sexe et, pour une femme, sa **situation** (un seul choix) : non réglée,
   réglée, abondamment réglée, enceinte ou allaitement. Le bouton « Enregistrer » est en haut (barre fixe, toujours
   visible) et en bas ; il ramène à la fiche. Sans réponse (nouveau profil), la situation proposée est « réglée »
   entre 12 et 50 ans (réglable dans `config.toml`), « non réglée » sinon.
-- **Cercles de complétion** : juste sous le titre, centrés. Leur taille dépend du nombre de nutriments suivis dans
-  le profil (`ring_size_max` dans `config.toml`) : un seul nutriment suivi -> un très grand cercle, beaucoup de
-  nutriments -> des cercles plus petits (jusqu'au minimum `ring_size`) pour tous les faire tenir.
+- **Cercles de complétion** : juste sous le titre, un cercle par nutriment suivi (orange, vert avec une coche une
+  fois l'apport recommandé atteint), dans une grille centrée qui passe à la ligne selon la largeur de l'écran.
+  Leur taille dépend du nombre de nutriments suivis (`ring_size_max` dans `config.toml`) : un seul nutriment suivi
+  -> un très grand cercle, beaucoup de nutriments -> des cercles plus petits (jusqu'au minimum `ring_size`).
+- **Détail d'un nutriment** : toucher un cercle l'ouvre en grand, par-dessus la page floutée. Sa barre de
+  progression y est découpée en segments de couleur, un par aliment du jour, proportionnels à ce que chacun
+  apporte ; la liste en dessous donne pour chaque couleur l'aliment, la quantité apportée et la part de l'apport
+  recommandé. Au-delà de 7 aliments, les plus petits apports sont regroupés en « Autres aliments » (gris).
+  Toucher en dehors de la carte, ou la croix, la ferme.
 - **Saisir un repas** : tape l'aliment (suggestions pendant la frappe — tes aliments personnalisés en tête, puis le
   ou les « aliment moyen » correspondants s'il y en a, ex. « Pain (aliment moyen) » en tapant « pain », puis les noms
   les plus courts), puis la quantité dans la barre « Quantité » et appuie sur **Entrée** : l'aliment est ajouté au
@@ -64,14 +78,15 @@ pytest                        # tests (dossier tests/, à lancer depuis la racin
 
 ## Configuration : dossier `config/`
 
-Tout ce qui se règle sans toucher au code est dans `config/` : `config.toml` (tableau ci-dessous) et
-`unites_par_defaut.csv` (l'unité par défaut de chaque aliment, voir « Unités par défaut »).
+Tout ce qui se règle sans toucher au code est dans `config/` : `config.toml` (tableau ci-dessous),
+`unites_par_defaut.csv` (l'unité par défaut de chaque aliment, voir « Unités par défaut ») et `ressources.toml`
+(liens et FAQ de l'onglet « Ressources », voir « Modifier les ressources et la FAQ »).
 
 | Section | Contenu |
 | --- | --- |
 | `[app]` | titre, phrase d'accroche et durée de la page de démarrage, fichier d'aliments (`foods.csv`), nombre de suggestions affichées |
 | `[profile]` | âge par défaut, âges min/max acceptés, tranche d'âge où « règles » est coché par défaut |
-| `[display]` | taille et épaisseur des cercles, couleurs (cercle à compléter / complet / aliment perso) |
+| `[display]` | taille et épaisseur des cercles, couleurs (en cours / atteint / aliment perso), seuil « apport bas » de l'onglet Semaine (`low_threshold`, en %, et `color_low`), couleurs des aliments dans le détail d'un cercle (`chart_colors`, `chart_color_other`) |
 | `[foods_build]` | réglages de `build_foods.py` : groupe requis, traitement de `< x` et de `traces` |
 | `[nutrients.<clé>]` | un bloc par nutriment : nom, unité, groupe, colonne du CSV, colonnes Ciqual, **apports de référence** |
 
@@ -111,6 +126,7 @@ nutrition_app/
 ├── main.py            point d'entrée (très court : délègue tout à ui/app.py)
 ├── config.py           lecture et validation stricte des fichiers de config/
 ├── nutrition.py         logique métier : profil, aliments, unités, calculs (testée, sans Flet)
+├── history.py           calculs sur plusieurs jours pour l'onglet « Semaine » (testés, sans Flet)
 ├── storage.py            sauvegarde locale (JSON) du profil, du journal, des aliments perso
 ├── build_foods.py         convertit la table Ciqual .xlsx en foods.csv (à lancer à la main)
 ├── foods.csv               base Ciqual convertie (générée par build_foods.py)
@@ -118,15 +134,21 @@ nutrition_app/
 ├── .gitignore              fichiers à ne pas versionner (caches, données perso data/, builds, .xlsx...)
 ├── config/                 fichiers de réglages, à éditer à la main
 │   ├── config.toml           apports de référence, nutriments, affichage...
-│   └── unites_par_defaut.csv  unité familière par défaut de chaque aliment (+ son poids en grammes)
+│   ├── unites_par_defaut.csv  unité familière par défaut de chaque aliment (+ son poids en grammes)
+│   └── ressources.toml       liens utiles et FAQ de l'onglet « Ressources »
 ├── tests/                  tests automatiques (lancer « pytest » depuis la racine)
 │   ├── test_nutrition.py     tests de nutrition.py et build_foods.py
 │   ├── test_config.py        tests de config.py
+│   ├── test_history.py       tests de history.py
+│   ├── test_navigation.py    cohérence des onglets de la barre du bas
 │   └── foods_demo.csv        mini-base utilisée par les tests
 └── ui/                          interface graphique (Flet) : un fichier par écran
     ├── app.py                     assemble l'app (charge les données, relie les écrans)
     ├── context.py                   état partagé (AppContext) et routeur entre écrans
     ├── style.py                      couleurs et tailles (lues depuis config.toml)
+    ├── layout.py                     show_screen() : affiche un écran (barres du haut et du bas, marges) ;
+    │                                  show_popup() : une carte par-dessus la page floutée
+    ├── navigation.py                 barre du bas : la liste des onglets (TABS)
     ├── widgets.py                     petits widgets réutilisés (saisie d'un aliment, d'une quantité en
     │                                  grammes ou en unité familière, formatage)
     ├── splash.py                      écran de démarrage
@@ -134,20 +156,29 @@ nutrition_app/
     ├── profile_view.py                  fiche du profil (lecture seule)
     ├── profile_edit.py                   formulaire du profil
     ├── custom_food.py                     écran « Ajouter un aliment »
-    └── home.py                             page principale (saisie, cercles, journal)
+    ├── home.py                             onglet Accueil (saisie, cercles, journal)
+    ├── rings.py                            cercles de l'accueil (grille, grand cercle à segments)
+    ├── nutrient_detail.py                  détail d'un nutriment (cercle agrandi, part de chaque aliment)
+    ├── week.py                             onglet Semaine (taux jour par jour)
+    └── resources.py                        onglet Ressources (liens, FAQ)
 ```
 
-Deux couches bien séparées : `nutrition.py` (+ `config.py`, `storage.py`, `build_foods.py`) porte toute la
-logique et ne dépend pas de Flet — c'est ce que `tests/test_nutrition.py` et `tests/test_config.py` testent. `ui/` ne fait
-que l'afficher : chaque écran est une fonction `show_xxx(ctx)` dans son propre fichier, qui ne connaît aucun
+Deux couches bien séparées : `nutrition.py` et `history.py` (+ `config.py`, `storage.py`, `build_foods.py`)
+portent toute la logique et ne dépendent pas de Flet — c'est ce que testent les fichiers de `tests/`. `ui/` ne fait
+que l'afficher : chaque écran est une fonction `show_xxx(ctx)` dans son propre fichier, qui construit son contenu
+puis l'affiche avec `show_screen(ctx, contenu, ...)` (`ui/layout.py`). Aucun écran ne connaît un
 autre écran directement — pour changer d'écran, on appelle `ctx.router.show_yyy()` plutôt que d'importer la
 fonction. C'est `ui/app.py` qui construit l'état partagé (`AppContext`, dans `ui/context.py`) et relie les
 écrans entre eux au démarrage ; c'est le seul fichier qui les connaît tous.
 
-**Ajouter un écran** : crée `ui/mon_ecran.py` avec une fonction `show_mon_ecran(ctx)`, ajoute
-`show_mon_ecran` à la classe `Router` dans `ui/context.py`, puis branche-le dans `ui/app.py`
-(`ctx.router.show_mon_ecran = lambda: show_mon_ecran(ctx)`). Les autres écrans n'ont rien à savoir de plus
-pour pouvoir y naviguer (`ctx.router.show_mon_ecran()`).
+**Ajouter un écran** : crée `ui/mon_ecran.py` avec une fonction `show_mon_ecran(ctx)` qui termine par
+`show_screen(ctx, contenu)`, ajoute `show_mon_ecran` à la classe `Router` dans `ui/context.py`, puis branche-le
+dans `ui/app.py` (`ctx.router.show_mon_ecran = lambda: show_mon_ecran(ctx)`). Les autres écrans n'ont rien à
+savoir de plus pour pouvoir y naviguer (`ctx.router.show_mon_ecran()`).
+
+**Ajouter un onglet à la barre du bas** : même chose, avec `show_screen(ctx, contenu, tab="mon_onglet")`, plus
+une ligne dans `TABS` (`ui/navigation.py`) : clé, libellé, icônes, et nom de l'écran dans le Router. L'ordre de
+`TABS` est l'ordre des onglets ; `tests/test_navigation.py` vérifie que chaque onglet mène bien à un écran.
 
 **Ajouter un nutriment** : voir plus bas — ça se passe entièrement dans `config.toml`, aucun fichier de `ui/`
 à toucher.
@@ -160,12 +191,16 @@ pour pouvoir y naviguer (`ctx.router.show_mon_ecran()`).
 | `main.py` | Point d'entrée Flet (délègue à `ui/app.py`) |
 | `ui/` | Interface : un fichier par écran, voir l'arborescence ci-dessus |
 | `nutrition.py` | Logique : chargement du CSV, apports de référence, calculs |
+| `history.py` | Logique sur plusieurs jours : semaines, taux par jour, moyennes (onglet « Semaine ») |
+| `config/ressources.toml` | **Contenu de l'onglet Ressources** : liens utiles et FAQ (à éditer à la main) |
 | `foods.csv` | Base Ciqual convertie (valeurs pour 100 g), générée par `build_foods.py` |
 | `build_foods.py` | Convertit la table Ciqual `.xlsx` en `foods.csv` (à lancer sur ton ordinateur) |
 | `tests/foods_demo.csv` | Mini-base de 45 aliments utilisée par les tests |
 | `storage.py` | Sauvegarde du profil, du journal, des aliments personnalisés et des unités familières (JSON local) |
 | `tests/test_nutrition.py` | Tests unitaires de la logique |
 | `tests/test_config.py` | Tests de la validation des fichiers de `config/` |
+| `tests/test_history.py` | Tests des calculs de l'onglet « Semaine » |
+| `tests/test_navigation.py` | Vérifie que chaque onglet de la barre du bas mène à un écran existant |
 | `.gitignore` | Ce que git doit ignorer : caches Python/pytest, `data/` (tes données perso quand tu lances l'app en local), sorties de `flet build`, table Ciqual `.xlsx`, archives `.zip` |
 
 ## Mettre à jour la base Ciqual
@@ -220,6 +255,26 @@ pour les yaourts, « portion » 30 g pour les fromages), affinée aliment par al
 Ce sont de bons ordres de grandeur, pas des pesées : la ligne d'aide sous le champ affiche toujours l'équivalence
 utilisée, « + Nouvelle unité » permet de la corriger pour soi dans l'app, et une valeur fausse se corrige
 définitivement dans ce fichier (aucun code à toucher).
+
+## Modifier les ressources et la FAQ
+
+L'onglet « Ressources » affiche, dans l'ordre, les blocs de `config/ressources.toml` :
+
+```toml
+[[links]]
+group = "Carence en fer"            # rubrique : les liens d'une même rubrique sont regroupés
+title = "Anémie par carence en fer (ameli.fr)"
+url = "https://www.ameli.fr/assure/sante/themes/anemie-par-carence-en-fer"
+description = "Une phrase d'explication (facultatif)."
+
+[[faq]]
+question = "Où sont enregistrées mes données ?"
+answer = "Uniquement sur ton appareil."
+```
+
+Pour ajouter une question ou un lien, copie un bloc et modifie-le ; aucun code à toucher. Le fichier est vérifié
+au démarrage (clé manquante ou inconnue, lien qui ne commence pas par `http://` ou `https://`...), avec un message
+qui indique le bloc fautif.
 
 ## Avertissement
 

@@ -10,6 +10,7 @@ import flet as ft
 from nutrition import GRAMS_UNIT, NUTRIENTS, normalize, parse_grams, parse_nutrient_value, recipe_per100
 
 from .context import AppContext
+from .layout import show_screen
 from .style import COLOR_CUSTOM
 from .widgets import fmt, make_food_input, make_grams_input, validate
 
@@ -222,63 +223,55 @@ def show_custom_food(ctx: AppContext) -> None:
                 pass
         ctx.router.show_main()
 
-    page.appbar = None
-    page.clean()
-    page.add(
-        ft.SafeArea(
-            ft.Container(
-                padding=ft.Padding.only(left=16, right=16, top=8, bottom=24),
-                content=ft.Column(
+    show_screen(
+        ctx,
+        ft.Column(
+            [
+                ft.Row(
                     [
-                        ft.Row(
-                            [
-                                ft.IconButton(
-                                    ft.Icons.ARROW_BACK, tooltip="Retour", on_click=lambda e: ctx.router.show_main()
-                                ),
-                                ft.Text("Ajouter un aliment", size=24, weight=ft.FontWeight.BOLD),
-                            ]
+                        ft.IconButton(ft.Icons.ARROW_BACK, tooltip="Retour", on_click=lambda e: ctx.router.show_main()),
+                        ft.Text("Ajouter un aliment", size=24, weight=ft.FontWeight.BOLD),
+                    ]
+                ),
+                ft.Text(
+                    spans=[
+                        ft.TextSpan(
+                            "Tu ne trouves pas un aliment dans la liste ? Ajoute-le ici, en saisissant "
+                            "ses nutriments ou comme une recette faite d'autres aliments. Il apparaîtra "
+                            "ensuite "
                         ),
-                        ft.Text(
-                            spans=[
-                                ft.TextSpan(
-                                    "Tu ne trouves pas un aliment dans la liste ? Ajoute-le ici, en saisissant "
-                                    "ses nutriments ou comme une recette faite d'autres aliments. Il apparaîtra "
-                                    "ensuite "
-                                ),
-                                ft.TextSpan(
-                                    "en orange, avec la mention « perso »",
-                                    style=ft.TextStyle(color=COLOR_CUSTOM, weight=ft.FontWeight.W_600),
-                                ),
-                                ft.TextSpan(
-                                    ", en tête des suggestions quand tu le tapes, pour le distinguer des "
-                                    "aliments de la base officielle."
-                                ),
-                            ],
-                            size=14,
+                        ft.TextSpan(
+                            "en orange, avec la mention « perso »",
+                            style=ft.TextStyle(color=COLOR_CUSTOM, weight=ft.FontWeight.W_600),
                         ),
-                        name_field,
-                        ft.Row([unit_label_field, unit_grams_field], wrap=True, spacing=10, run_spacing=10),
-                        ft.Text(
-                            "Facultatif : une unité pratique pour la saisie ensuite (ex. « 1 fruit » plutôt "
-                            "qu'en grammes). D'autres unités pourront être ajoutées plus tard, pour ce ou "
-                            "d'autres aliments, depuis l'écran principal.",
-                            size=12,
-                            color=ft.Colors.GREY_700,
-                        ),
-                        mode,
-                        manual_col,
-                        recipe_col,
-                        ft.Row(
-                            [
-                                ft.TextButton("Annuler", on_click=lambda e: ctx.router.show_main()),
-                                ft.FilledButton("Enregistrer l'aliment", on_click=save_custom),
-                            ],
-                            alignment=ft.MainAxisAlignment.END,
+                        ft.TextSpan(
+                            ", en tête des suggestions quand tu le tapes, pour le distinguer des "
+                            "aliments de la base officielle."
                         ),
                     ],
-                    spacing=12,
-                    horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                    size=14,
                 ),
-            )
-        )
+                name_field,
+                ft.Row([unit_label_field, unit_grams_field], wrap=True, spacing=10, run_spacing=10),
+                ft.Text(
+                    "Facultatif : une unité pratique pour la saisie ensuite (ex. « 1 fruit » plutôt "
+                    "qu'en grammes). D'autres unités pourront être ajoutées plus tard, pour ce ou "
+                    "d'autres aliments, depuis l'écran principal.",
+                    size=12,
+                    color=ft.Colors.GREY_700,
+                ),
+                mode,
+                manual_col,
+                recipe_col,
+                ft.Row(
+                    [
+                        ft.TextButton("Annuler", on_click=lambda e: ctx.router.show_main()),
+                        ft.FilledButton("Enregistrer l'aliment", on_click=save_custom),
+                    ],
+                    alignment=ft.MainAxisAlignment.END,
+                ),
+            ],
+            spacing=12,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+        ),
     )

@@ -15,6 +15,7 @@ import flet as ft
 from nutrition import AGE_MAX, AGE_MIN, NUTRIENTS, REFERENCES, WOMAN_STATUSES, Profile
 
 from .context import AppContext
+from .layout import show_screen
 
 
 def show_profile_edit(ctx: AppContext) -> None:
@@ -67,9 +68,7 @@ def show_profile_edit(ctx: AppContext) -> None:
     for n in NUTRIENTS:
         if n["group"] != last_group:
             last_group = n["group"]
-            grouped_checks.controls.append(
-                ft.Text(last_group, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_700)
-            )
+            grouped_checks.controls.append(ft.Text(last_group, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_700))
         grouped_checks.controls.append(nutrient_checks[n["key"]])
 
     def clear_nutrient_error():
@@ -132,7 +131,7 @@ def show_profile_edit(ctx: AppContext) -> None:
         return ft.FilledButton("Enregistrer", icon=ft.Icons.CHECK, on_click=save_profile)
 
     # Barre du haut : reste visible quand on fait défiler le formulaire.
-    page.appbar = ft.AppBar(
+    appbar = ft.AppBar(
         title=ft.Text("Ton profil", weight=ft.FontWeight.BOLD),
         center_title=False,
         leading=(
@@ -146,38 +145,34 @@ def show_profile_edit(ctx: AppContext) -> None:
         ),
         actions=[save_button(), ft.Container(width=12)],
     )
-    page.clean()
-    page.add(
-        ft.SafeArea(
-            ft.Container(
-                padding=ft.Padding.only(left=20, right=20, top=4, bottom=20),
-                content=ft.Column(
-                    [
-                        ft.Text(
-                            "Il sert à calculer tes apports recommandés pour chaque nutriment.",
-                            color=ft.Colors.GREY_700,
-                        ),
-                        form_error,
-                        ft.Container(height=6),
-                        age_field,
-                        ft.Text("Sexe"),
-                        sex,
-                        female_options,
-                        ft.Divider(height=20),
-                        ft.Text("Nutriments à suivre", size=18, weight=ft.FontWeight.W_600),
-                        ft.Row(
-                            [
-                                ft.TextButton("Tout cocher", on_click=lambda e: set_all_nutrients(True)),
-                                ft.TextButton("Tout décocher", on_click=lambda e: set_all_nutrients(False)),
-                            ]
-                        ),
-                        grouped_checks,
-                        nutrient_error,
-                        ft.Container(height=10),
-                        save_button(),
-                    ],
-                    spacing=10,
+    show_screen(
+        ctx,
+        ft.Column(
+            [
+                ft.Text(
+                    "Il sert à calculer tes apports recommandés pour chaque nutriment.",
+                    color=ft.Colors.GREY_700,
                 ),
-            )
-        )
+                form_error,
+                ft.Container(height=6),
+                age_field,
+                ft.Text("Sexe"),
+                sex,
+                female_options,
+                ft.Divider(height=20),
+                ft.Text("Nutriments à suivre", size=18, weight=ft.FontWeight.W_600),
+                ft.Row(
+                    [
+                        ft.TextButton("Tout cocher", on_click=lambda e: set_all_nutrients(True)),
+                        ft.TextButton("Tout décocher", on_click=lambda e: set_all_nutrients(False)),
+                    ]
+                ),
+                grouped_checks,
+                nutrient_error,
+                ft.Container(height=10),
+                save_button(),
+            ],
+            spacing=10,
+        ),
+        appbar=appbar,
     )

@@ -1,0 +1,117 @@
+# ============================================================================
+#  Contenu de l'onglet « Ressources » : liens utiles et questions fréquentes (FAQ).
+#
+#  À modifier librement, sans toucher au code : l'onglet affiche les blocs dans l'ordre
+#  du fichier. Vérifié au démarrage (clé manquante ou inconnue, lien qui ne commence pas
+#  par http:// ou https://...) avec un message qui indique le bloc fautif.
+#
+#  Un lien :                              Une question :
+#    [[links]]                              [[faq]]
+#    group = "Titre de la rubrique"         question = "La question ?"
+#    title = "Nom du lien"                  answer = "La réponse."
+#    url = "https://..."
+#    description = "Une phrase (facultatif)"
+#
+#  Les liens d'un même `group` sont affichés ensemble, sous ce titre.
+#  Pour un texte sur plusieurs lignes, utilise des triples guillemets : """...""".
+# ============================================================================
+
+# ---------------------------------------------------------------------------- Liens
+[[links]]
+group = "Carence en fer"
+title = "Anémie par carence en fer (ameli.fr)"
+url = "https://www.ameli.fr/assure/sante/themes/anemie-par-carence-en-fer"
+description = "L'Assurance Maladie : causes, symptômes, diagnostic et traitement."
+
+[[links]]
+group = "Carence en fer"
+title = "Bien couvrir ses besoins en fer (ameli.fr)"
+url = "https://www.ameli.fr/assure/sante/themes/anemie-par-carence-en-fer/couvrir-besoins-fer-age"
+description = "Besoins selon l'âge, aliments riches en fer et quand consulter."
+
+[[links]]
+group = "Bien manger"
+title = "Les recommandations alimentaires pour les adultes (Manger Bouger)"
+url = "https://www.mangerbouger.fr/manger-mieux/a-tout-age-et-a-chaque-etape-de-la-vie/les-recommandations-alimentaires-pour-les-adultes"
+description = "Les repères officiels de Santé publique France."
+
+[[links]]
+group = "Données utilisées par l'app"
+title = "Table Ciqual (Anses)"
+url = "https://ciqual.anses.fr/"
+description = "La composition nutritionnelle des aliments, d'où viennent les valeurs de l'app."
+
+[[links]]
+group = "Données utilisées par l'app"
+title = "Les références nutritionnelles en vitamines et minéraux (Anses)"
+url = "https://www.anses.fr/fr/system/files/NUT2018SA0238Ra.pdf"
+description = "Le rapport de l'Anses sur les apports recommandés (PDF)."
+
+[[links]]
+group = "Données utilisées par l'app"
+title = "DRV Finder (EFSA)"
+url = "https://multimedia.efsa.europa.eu/drvs/index.htm"
+description = "Les valeurs de référence européennes, nutriment par nutriment (en anglais)."
+
+# ---------------------------------------------------------------------------- FAQ
+[[faq]]
+question = "Comment sont calculés les pourcentages ?"
+answer = """Pour chaque nutriment, l'app additionne ce qu'apportent les aliments notés dans la journée, \
+puis le divise par l'apport recommandé pour ton profil (âge, sexe, situation). 100 % veut dire que \
+l'apport recommandé du jour est atteint : le cercle devient vert."""
+
+[[faq]]
+question = "D'où viennent les apports recommandés ?"
+answer = """Ce sont des ordres de grandeur inspirés des références de l'Anses et de l'EFSA, qui varient \
+selon l'âge, le sexe et, pour une femme, la situation (règles, règles abondantes, grossesse, allaitement). \
+Tu peux voir ceux qui s'appliquent à toi dans ton profil (icône en haut de l'accueil)."""
+
+[[faq]]
+question = "D'où viennent les valeurs des aliments ?"
+answer = """De la table Ciqual de l'Anses, pour 100 g de partie comestible. Quand une valeur n'y est pas \
+renseignée, l'app la compte comme 0 : tes apports réels peuvent donc être un peu plus élevés que ce \
+qui est affiché."""
+
+[[faq]]
+question = "Que veut dire « aliment moyen » ?"
+answer = """C'est une moyenne calculée par l'Anses sur plusieurs variantes d'un même aliment (par exemple \
+« Pain (aliment moyen) » pour l'ensemble des pains). Choisis-le quand tu ne sais pas précisément quelle \
+variante tu as mangée : c'est pour ça qu'il est proposé en premier."""
+
+[[faq]]
+question = "Les unités (fruit, tranche, verre...) sont-elles précises ?"
+answer = """Ce sont des estimations courantes (un kiwi ≈ 75 g, une tranche de jambon ≈ 45 g...). \
+L'équivalence en grammes est toujours affichée sous la quantité. Si elle ne correspond pas à ce que \
+tu manges, choisis « + Nouvelle unité » dans la liste des unités pour définir la tienne."""
+
+[[faq]]
+question = "Mon aliment n'est pas dans la liste, que faire ?"
+answer = """Appuie sur « Ajouter » sous la quantité : tu peux saisir ses nutriments (par exemple \
+depuis l'étiquette) ou le composer comme une recette à partir d'autres aliments. Il apparaîtra \
+ensuite en orange, avec la mention « perso »."""
+
+[[faq]]
+question = "Comment lire l'onglet « Semaine » ?"
+answer = """Chaque ligne est un nutriment, chaque colonne un jour. Une case verte veut dire que \
+l'apport recommandé a été atteint ce jour-là ; sinon, le nombre indique le pourcentage atteint. \
+« – » signifie que rien n'a été noté : ce jour ne compte pas dans la moyenne. Les flèches en haut \
+permettent de revoir les semaines précédentes."""
+
+[[faq]]
+question = "Où sont enregistrées mes données ?"
+answer = """Uniquement sur ton appareil : ton profil, ton journal et tes aliments personnels ne sont \
+envoyés nulle part."""
+
+[[faq]]
+question = "Comment mieux absorber le fer de mon alimentation ?"
+answer = """Le fer des viandes et des poissons est mieux absorbé que celui des végétaux (légumineuses, \
+légumes verts, céréales). Pour ces derniers, les associer à une source de vitamine C au même repas \
+(agrumes, kiwi, poivron...) aide l'absorption, tandis que le thé et le café pris pendant le repas la \
+diminuent. Les liens de la rubrique « Carence en fer » donnent plus de détails."""
+
+[[faq]]
+question = "L'app peut-elle détecter une carence ?"
+answer = """Non. Elle t'aide à repérer des apports souvent bas, mais seule une prise de sang prescrite \
+par un médecin permet de confirmer une carence. En cas de fatigue inhabituelle, d'essoufflement ou de \
+pâleur, parles-en à ton médecin. Ne prends pas de complément de fer sans avis médical : un excès de \
+fer est lui aussi mauvais pour la santé."""

@@ -81,9 +81,7 @@ def convert(xlsx_path: str | Path, csv_path: str | Path, config: dict | None = N
     def find_col(pattern: str, nutrient: str) -> int:
         found = [i for i, h in enumerate(headers) if re.search(pattern, h)]
         if len(found) != 1:
-            raise SystemExit(
-                f"[nutrients.{nutrient}] ciqual : {len(found)} colonnes pour {pattern!r} (attendu : 1)"
-            )
+            raise SystemExit(f"[nutrients.{nutrient}] ciqual : {len(found)} colonnes pour {pattern!r} (attendu : 1)")
         return found[0]
 
     # nutriment -> liste d'alternatives, chacune = liste d'index de colonnes (plusieurs = somme)
@@ -92,8 +90,7 @@ def convert(xlsx_path: str | Path, csv_path: str | Path, config: dict | None = N
         if not n["ciqual"]:
             raise SystemExit(f"[nutrients.{n['key']}] : « ciqual » est vide, impossible de le convertir")
         idx[n["key"]] = [
-            [find_col(p, n["key"]) for p in ((alt,) if isinstance(alt, str) else alt)]
-            for alt in n["ciqual"]
+            [find_col(p, n["key"]) for p in ((alt,) if isinstance(alt, str) else alt)] for alt in n["ciqual"]
         ]
     name_i = headers.index("alim_nom_fr")
     code_i = headers.index("alim_code")
@@ -135,7 +132,9 @@ if __name__ == "__main__":
     print(convert(sys.argv[1], out, config), "->", out)
     missing = foods_without_default_unit(out)
     if missing:
-        print(f"\n{len(missing)} aliment(s) sans unité par défaut dans {DEFAULT_UNITS_PATH.name} "
-              "(proposés en grammes seulement) — ajoute-leur une ligne :")
+        print(
+            f"\n{len(missing)} aliment(s) sans unité par défaut dans {DEFAULT_UNITS_PATH.name} "
+            "(proposés en grammes seulement) — ajoute-leur une ligne :"
+        )
         for code, name in missing:
             print(f"  {code},{name}")

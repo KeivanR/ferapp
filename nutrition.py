@@ -254,6 +254,32 @@ def top_nutrient(
     return best
 
 
+OTHER_FOODS = "Autres aliments"  # libellé du regroupement des plus petits apports (food_contributions)
+
+
+def food_contributions(
+    entries: list[dict], foods: dict[str, dict], key: str, max_foods: int | None = None
+) -> list[dict]:
+    """Ce que chaque aliment de `entries` apporte pour le nutriment `key`, du plus gros apport au
+    plus petit : [{"food": nom, "amount": quantité, "other": False}, ...]. Un aliment noté
+    plusieurs fois est cumulé ; les apports nuls sont omis.
+
+    Avec `max_foods`, seuls les max_foods plus gros apports gardent leur ligne ; s'il y en a
+    davantage, les autres sont regroupés en une dernière ligne {"food": OTHER_FOODS, "amount":
+    leur somme, "other": True} (ex. une couleur par aliment, dans la limite des couleurs prévues).
+    """
+    amounts: dict[str, float] = {}
+    for entry in entries:
+        amount = entry_nutrients(entry, foods)[key]
+        if amount > 0:
+            amounts[entry["food"]] = amounts.get(entry["food"], 0.0) + amount
+    items = [{"food": f, "amount": a, "other": False} for f, a in sorted(amounts.items(), key=lambda kv: -kv[1])]
+    if max_foods is not None and len(items) > max_foods:
+        kept, rest = items[:max_foods], items[max_foods:]
+        items = kept + [{"food": OTHER_FOODS, "amount": sum(i["amount"] for i in rest), "other": True}]
+    return items
+
+
 def daily_totals(entries: list[dict], foods: dict[str, dict]) -> dict[str, float]:
     totals = {n["key"]: 0.0 for n in NUTRIENTS}
     for e in entries:
@@ -410,9 +436,7 @@ def add_food_unit(
     return unit
 
 
-def preferred_unit(
-    food_name: str, foods: dict[str, dict], units: list[dict], last_units: dict[str, str]
-) -> str:
+def preferred_unit(food_name: str, foods: dict[str, dict], units: list[dict], last_units: dict[str, str]) -> str:
     """Unité à présélectionner pour cet aliment, parmi GRAMS_UNIT et `units` (celles de
     units_for_food) : la dernière que l'utilisateur a utilisée pour lui (`last_units`, voir
     remember_unit), si elle existe encore ; sinon la première unité familière (son unité par

@@ -10,11 +10,11 @@ import flet as ft
 from nutrition import WOMAN_STATUSES, Profile, recommended_intakes, selected_nutrients
 
 from .context import AppContext
+from .layout import show_screen
 from .widgets import fmt
 
 
 def show_profile(ctx: AppContext) -> None:
-    page = ctx.page
     current = Profile.from_dict(ctx.state["profile"])
     recs = recommended_intakes(current)
     chosen = selected_nutrients(current)
@@ -28,14 +28,12 @@ def show_profile(ctx: AppContext) -> None:
     for n in chosen:
         if n["group"] != last_group:
             last_group = n["group"]
-            nutrient_rows.controls.append(
-                ft.Text(last_group, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_700)
-            )
+            nutrient_rows.controls.append(ft.Text(last_group, weight=ft.FontWeight.W_600, color=ft.Colors.GREY_700))
         nutrient_rows.controls.append(ft.Text(f"{n['label']} : {fmt(recs[n['key']])} {n['unit']} / jour"))
     if not chosen:
         nutrient_rows.controls.append(ft.Text("Aucun nutriment suivi.", color=ft.Colors.GREY_700))
 
-    page.appbar = ft.AppBar(
+    appbar = ft.AppBar(
         title=ft.Text("Ton profil", weight=ft.FontWeight.BOLD),
         center_title=False,
         leading=ft.IconButton(ft.Icons.ARROW_BACK, tooltip="Retour", on_click=lambda e: ctx.router.show_main()),
@@ -44,20 +42,16 @@ def show_profile(ctx: AppContext) -> None:
             ft.Container(width=12),
         ],
     )
-    page.clean()
-    page.add(
-        ft.SafeArea(
-            ft.Container(
-                padding=ft.Padding.only(left=20, right=20, top=4, bottom=20),
-                content=ft.Column(
-                    [
-                        *[ft.Text(line) for line in info_lines],
-                        ft.Divider(height=20),
-                        ft.Text("Apports recommandés", size=18, weight=ft.FontWeight.W_600),
-                        nutrient_rows,
-                    ],
-                    spacing=6,
-                ),
-            )
-        )
+    show_screen(
+        ctx,
+        ft.Column(
+            [
+                *[ft.Text(line) for line in info_lines],
+                ft.Divider(height=20),
+                ft.Text("Apports recommandés", size=18, weight=ft.FontWeight.W_600),
+                nutrient_rows,
+            ],
+            spacing=6,
+        ),
+        appbar=appbar,
     )

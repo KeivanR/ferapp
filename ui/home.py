@@ -1,5 +1,4 @@
-"""Page principale : saisie du jour, cercles de complétion par nutriment, journal des repas.
-"""
+"""Page principale : saisie du jour, cercles de complétion par nutriment, journal des repas."""
 
 from __future__ import annotations
 
@@ -18,18 +17,10 @@ from nutrition import (
 )
 
 from .context import AppContext
-from .style import COLOR_DONE, COLOR_TODO, RING_SIZE, RING_SIZE_MAX, RING_STROKE
+from .layout import screen_title, show_screen
+from .nutrient_detail import show_nutrient_detail
+from .rings import rings_grid
 from .widgets import QuantityInput, fmt, make_food_input, make_grams_input, validate, validate_with_quantity
-
-
-def ring_size_for(count: int) -> int:
-    """Diamètre des cercles selon le nombre de nutriments suivis : très grand (jusqu'à
-    RING_SIZE_MAX) s'il y en a peu, jusqu'au minimum RING_SIZE s'il y en a beaucoup — pour
-    qu'un profil avec un seul nutriment lui laisse toute la place."""
-    if count <= 1:
-        return RING_SIZE_MAX
-    size = round(RING_SIZE_MAX / count**0.5)
-    return max(RING_SIZE, min(size, RING_SIZE_MAX))
 
 
 def show_main(ctx: AppContext) -> None:
@@ -38,11 +29,7 @@ def show_main(ctx: AppContext) -> None:
     recommended = recommended_intakes(profile)
     shown = selected_nutrients(profile)
 
-    # Centrés par rapport à la page : ft.Row(wrap=True) (un « Wrap » Flutter) ne prend que la
-    # largeur de son contenu, donc son alignement centré n'a d'effet qu'une fois placé dans un
-    # Row englobant qui, lui, occupe toute la largeur disponible.
-    rings_wrap = ft.Row(wrap=True, alignment=ft.MainAxisAlignment.CENTER, spacing=16, run_spacing=16)
-    rings_row = ft.Row([rings_wrap], alignment=ft.MainAxisAlignment.CENTER)
+    rings_holder = ft.Container()  # grille des cercles (ui/rings.py), reconstruite à chaque refresh()
     entries_col = ft.Column(spacing=0)
 
     # La quantité se saisit en grammes ou dans une unité familière propre à l'aliment (ex. « 2
@@ -76,60 +63,18 @@ def show_main(ctx: AppContext) -> None:
             await add_entry()
 
     food_field, suggestions_col = make_food_input(ctx, on_food_submit, on_food_changed=on_food_changed, expand=True)
-    quantity = QuantityInput(
-        ctx, on_submit=on_quantity_submit, hint_text="Tape la quantité puis Entrée", expand=True
-    )
+    quantity = QuantityInput(ctx, on_submit=on_quantity_submit, hint_text="Tape la quantité puis Entrée", expand=True)
     quantity_row = ft.Row([quantity.control], visible=False)
 
-    def build_ring(n: dict, ratio: float, total: float, rec: float, size: int) -> ft.Control:
-        done = ratio >= 1
-        color = COLOR_DONE if done else COLOR_TODO
-        # Un plus gros cercle mérite un trait, un texte et une coche proportionnellement plus gros.
-        stroke = max(RING_STROKE, round(RING_STROKE * size / RING_SIZE))
-        pct_size = max(16, size // 6)
-        icon_size = max(28, size // 4)
-        return ft.Column(
-            [
-                ft.Stack(
-                    [
-                        ft.ProgressRing(
-                            value=min(ratio, 1.0),
-                            stroke_width=stroke,
-                            width=size,
-                            height=size,
-                            color=color,
-                            bgcolor=ft.Colors.GREY_200,
-                        ),
-                        ft.Container(
-                            width=size,
-                            height=size,
-                            alignment=ft.Alignment.CENTER,
-                            content=(
-                                ft.Icon(ft.Icons.CHECK, color=color, size=icon_size)
-                                if done
-                                else ft.Text(f"{ratio * 100:.0f}%", weight=ft.FontWeight.BOLD, size=pct_size)
-                            ),
-                        ),
-                    ],
-                    width=size,
-                    height=size,
-                ),
-                ft.Text(n["label"], weight=ft.FontWeight.W_600, size=14),
-                ft.Text(f"{fmt(total)} / {fmt(rec)} {n['unit']}", size=11, color=ft.Colors.GREY_700),
-            ],
-            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            spacing=3,
-            width=max(112, size + 24),
-        )
+    def open_nutrient_detail(nutrient: dict) -> None:
+        """Toucher un cercle : il s'ouvre en grand, avec la part de chaque aliment du jour."""
+        show_nutrient_detail(ctx, nutrient, ctx.entries_today(), recommended[nutrient["key"]])
 
     def refresh():
         entries = ctx.entries_today()
         totals = daily_totals(entries, ctx.foods)
         ratios = completion(totals, recommended)
-        size = ring_size_for(len(shown))
-        rings_wrap.controls = [
-            build_ring(n, ratios[n["key"]], totals[n["key"]], recommended[n["key"]], size) for n in shown
-        ]
+        rings_holder.content = rings_grid(shown, ratios, totals, recommended, on_click=open_nutrient_detail)
         entries_col.controls = [build_entry_tile(i, e) for i, e in enumerate(entries)] or [
             ft.Text("Rien d'ajouté pour l'instant.", color=ft.Colors.GREY_600)
         ]
@@ -140,8 +85,7 @@ def show_main(ctx: AppContext) -> None:
         top = top_nutrient(e, ctx.foods, recommended, shown)
         if top:
             detail = (
-                f"{top['label']} : {fmt(top['amount'])} {top['unit']} "
-                f"({top['share'] * 100:.0f} % de l'apport du jour)"
+                f"{top['label']} : {fmt(top['amount'])} {top['unit']} ({top['share'] * 100:.0f} % de l'apport du jour)"
             )
         else:
             detail = "Aucune donnée pour les nutriments choisis"
@@ -221,55 +165,40 @@ def show_main(ctx: AppContext) -> None:
             )
         )
 
-    page.appbar = None
-    page.clean()
-    page.add(
-        ft.SafeArea(
-            ft.Container(
-                padding=ft.Padding.only(left=16, right=16, top=8, bottom=24),
-                content=ft.Column(
-                    [
-                        ft.Row(
-                            [
-                                ft.Column(
-                                    [
-                                        ft.Text("Aujourd'hui", size=26, weight=ft.FontWeight.BOLD),
-                                        ft.Text(datetime.date.today().strftime("%d/%m/%Y"), color=ft.Colors.GREY_700),
-                                    ],
-                                    spacing=0,
-                                ),
-                                ft.IconButton(
-                                    ft.Icons.PERSON_OUTLINE,
-                                    tooltip="Mon profil",
-                                    on_click=lambda e: ctx.router.show_profile(),
-                                ),
-                            ],
-                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        ),
-                        ft.Container(height=16),
-                        rings_row,
-                        ft.Container(height=16),
-                        ft.Row([food_field]),
-                        suggestions_col,
-                        quantity_row,
-                        ft.Row(
-                            [
-                                # Ouvre l'écran de création d'un aliment personnalisé (ui/custom_food.py).
-                                ft.TextButton(
-                                    "Ajouter",
-                                    icon=ft.Icons.ADD_CIRCLE_OUTLINE,
-                                    tooltip="Ajouter un aliment qui n'est pas dans la liste",
-                                    on_click=lambda e: ctx.router.show_custom_food(),
-                                ),
-                            ],
-                        ),
-                        ft.Divider(height=24),
-                        ft.Text("Repas du jour", size=18, weight=ft.FontWeight.W_600),
-                        entries_col,
-                    ],
-                    spacing=8,
+    show_screen(
+        ctx,
+        ft.Column(
+            [
+                screen_title(
+                    "Aujourd'hui",
+                    datetime.date.today().strftime("%d/%m/%Y"),
+                    trailing=ft.IconButton(
+                        ft.Icons.PERSON_OUTLINE, tooltip="Mon profil", on_click=lambda e: ctx.router.show_profile()
+                    ),
                 ),
-            )
-        )
+                ft.Container(height=16),
+                rings_holder,
+                ft.Container(height=16),
+                ft.Row([food_field]),
+                suggestions_col,
+                quantity_row,
+                ft.Row(
+                    [
+                        # Ouvre l'écran de création d'un aliment personnalisé (ui/custom_food.py).
+                        ft.TextButton(
+                            "Ajouter",
+                            icon=ft.Icons.ADD_CIRCLE_OUTLINE,
+                            tooltip="Ajouter un aliment qui n'est pas dans la liste",
+                            on_click=lambda e: ctx.router.show_custom_food(),
+                        ),
+                    ],
+                ),
+                ft.Divider(height=24),
+                ft.Text("Repas du jour", size=18, weight=ft.FontWeight.W_600),
+                entries_col,
+            ],
+            spacing=8,
+        ),
+        tab="accueil",
     )
     refresh()

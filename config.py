@@ -2,7 +2,8 @@
 
 - config/config.toml : références, nutriments, réglages d'affichage (load_config) ;
 - config/unites_par_defaut.csv : l'unité familière par défaut de chaque aliment Ciqual
-  (load_default_units).
+  (load_default_units) ;
+- config/ressources.toml : liens utiles et FAQ de l'onglet « Ressources » (load_resources).
 
 On vérifie tout au chargement et on lève une ConfigError qui dit exactement où est le
 problème, plutôt que d'afficher plus tard de faux chiffres.
@@ -20,6 +21,7 @@ from pathlib import Path
 CONFIG_DIR = Path(__file__).parent / "config"
 DEFAULT_PATH = CONFIG_DIR / "config.toml"
 DEFAULT_UNITS_PATH = CONFIG_DIR / "unites_par_defaut.csv"
+DEFAULT_RESOURCES_PATH = CONFIG_DIR / "ressources.toml"
 
 # Clés autorisées dans [nutrients.<clé>.reference]
 BAND_KEYS = ("homme", "femme", "femme_regles", "femme_regles_abondantes")  # tranches d'âge [[âge_max, valeur], ...]
@@ -41,17 +43,33 @@ PROFILE_DEFAULTS = {
 }
 DISPLAY_DEFAULTS = {
     "ring_size": 88,  # taille des cercles quand beaucoup de nutriments sont suivis
-    "ring_size_max": 200,  # taille quand un seul nutriment est suivi (voir ui/home.py)
+    "ring_size_max": 200,  # taille quand un seul nutriment est suivi (voir ui/rings.py)
     "ring_stroke_width": 9,
+    "low_threshold": 50,  # en %, sous ce taux l'apport est affiché comme bas (color_low)
+    "color_low": "#E53935",
     "color_todo": "#FB8C00",
     "color_done": "#43A047",
     "color_custom_food": "#EF6C00",
+    # Détail d'un cercle : une couleur par aliment, dans cet ordre (le plus gros apport en premier),
+    # puis chart_color_other pour le regroupement des plus petits apports.
+    "chart_colors": ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7"],
+    "chart_color_other": "#a8a7a1",
 }
 BUILD_DEFAULTS = {"required_group": "Minéraux", "below_limit_factor": 0.0, "traces_value": 0.0}
 
 
 class ConfigError(ValueError):
     """Erreur dans un fichier de config/ (config.toml ou unites_par_defaut.csv)."""
+
+
+def _read_toml(path: Path) -> dict:
+    try:
+        with open(path, "rb") as f:
+            return tomllib.load(f)
+    except FileNotFoundError:
+        raise ConfigError(f"Fichier de configuration introuvable : {path}") from None
+    except tomllib.TOMLDecodeError as e:
+        raise ConfigError(f"{path.name} : syntaxe TOML invalide ({e})") from None
 
 
 def _number(value, where: str, minimum: float | None = None) -> float:
@@ -82,9 +100,7 @@ def _bands(value, where: str, age_max: int) -> list[tuple[float, float]]:
         age = _number(band[0], f"{where}, tranche n°{i + 1}, âge", minimum=0)
         val = _number(band[1], f"{where}, tranche n°{i + 1}, valeur", minimum=0)
         if bands and age <= bands[-1][0]:
-            raise ConfigError(
-                f"{where} : les âges doivent être strictement croissants ({bands[-1][0]} puis {age})"
-            )
+            raise ConfigError(f"{where} : les âges doivent être strictement croissants ({bands[-1][0]} puis {age})")
         bands.append((age, val))
     if bands[-1][0] < age_max:
         raise ConfigError(
@@ -99,9 +115,7 @@ def _ciqual(value, where: str) -> list:
     if not isinstance(value, list):
         raise ConfigError(f"{where} : liste attendue")
     for alt in value:
-        ok = isinstance(alt, str) or (
-            isinstance(alt, list) and alt and all(isinstance(p, str) for p in alt)
-        )
+        ok = isinstance(alt, str) or (isinstance(alt, list) and alt and all(isinstance(p, str) for p in alt))
         if not ok:
             raise ConfigError(f"{where} : chaque élément doit être un texte ou une liste de textes (reçu {alt!r})")
     return value
@@ -113,13 +127,7 @@ def load_config(path: str | Path | None = None) -> dict:
     {"app", "profile", "display", "foods_build", "nutrients": [...], "references": {...}}
     """
     path = Path(path or os.environ.get("NUTRI_CONFIG") or DEFAULT_PATH)
-    try:
-        with open(path, "rb") as f:
-            raw = tomllib.load(f)
-    except FileNotFoundError:
-        raise ConfigError(f"Fichier de configuration introuvable : {path}") from None
-    except tomllib.TOMLDecodeError as e:
-        raise ConfigError(f"{path.name} : syntaxe TOML invalide ({e})") from None
+    raw = _read_toml(path)
 
     unknown = set(raw) - {"app", "profile", "display", "foods_build", "nutrients"}
     if unknown:
@@ -145,6 +153,12 @@ def load_config(path: str | Path | None = None) -> dict:
     _number(display["ring_size"], "[display] ring_size", minimum=20)
     _number(display["ring_size_max"], "[display] ring_size_max", minimum=display["ring_size"])
     _number(display["ring_stroke_width"], "[display] ring_stroke_width", minimum=1)
+    _number(display["low_threshold"], "[display] low_threshold", minimum=0)
+    colors = display["chart_colors"]
+    if not isinstance(colors, list) or not colors or not all(isinstance(c, str) and c.startswith("#") for c in colors):
+        raise ConfigError('[display] chart_colors : liste de couleurs attendue, ex. ["#2a78d6", "#eb6834"]')
+    if display["low_threshold"] > 100:
+        raise ConfigError("[display] low_threshold est un pourcentage : entre 0 et 100")
     _number(build["below_limit_factor"], "[foods_build] below_limit_factor", minimum=0)
     _number(build["traces_value"], "[foods_build] traces_value", minimum=0)
 
@@ -181,8 +195,7 @@ def load_config(path: str | Path | None = None) -> dict:
         extra = set(ref) - set(BAND_KEYS) - set(SCALAR_KEYS)
         if extra:
             raise ConfigError(
-                f"{where}.reference : clés inconnues {sorted(extra)} "
-                f"(autorisées : {sorted(BAND_KEYS + SCALAR_KEYS)})"
+                f"{where}.reference : clés inconnues {sorted(extra)} (autorisées : {sorted(BAND_KEYS + SCALAR_KEYS)})"
             )
         for req in REQUIRED_BANDS:
             if req not in ref:
@@ -246,9 +259,7 @@ def load_default_units(path: str | Path | None = None) -> dict[str, dict | None]
         reader = csv.DictReader(f)
         missing = [c for c in UNITS_COLUMNS if c not in (reader.fieldnames or [])]
         if missing:
-            raise ConfigError(
-                f"{path.name} : colonnes manquantes {missing} (attendues : {', '.join(UNITS_COLUMNS)})"
-            )
+            raise ConfigError(f"{path.name} : colonnes manquantes {missing} (attendues : {', '.join(UNITS_COLUMNS)})")
         for row in reader:
             where = f"{path.name}, ligne {reader.line_num}"
             code = (row["alim_code"] or "").strip()
@@ -273,3 +284,47 @@ def load_default_units(path: str | Path | None = None) -> dict[str, dict | None]
                 raise ConfigError(f"{where} : « grammes » doit être positif (reçu {grams:g})")
             units[code] = {"label": label, "grams": grams}
     return units
+
+
+# Blocs de config/ressources.toml : clés obligatoires et facultatives de chaque type de bloc.
+RESOURCE_BLOCKS = {
+    "links": {"required": ("group", "title", "url"), "optional": ("description",)},
+    "faq": {"required": ("question", "answer"), "optional": ()},
+}
+
+
+def load_resources(path: str | Path | None = None) -> dict[str, list[dict]]:
+    """Lit et valide config/ressources.toml. Retourne {"links": [...], "faq": [...]}, chaque
+    élément étant un dict de textes (les clés facultatives absentes valent "")."""
+    path = Path(path or DEFAULT_RESOURCES_PATH)
+    raw = _read_toml(path)
+    unknown = set(raw) - set(RESOURCE_BLOCKS)
+    if unknown:
+        raise ConfigError(f"{path.name} : blocs inconnus {sorted(unknown)} (autorisés : {sorted(RESOURCE_BLOCKS)})")
+    resources: dict[str, list[dict]] = {}
+    for kind, spec in RESOURCE_BLOCKS.items():
+        blocks = raw.get(kind, [])
+        if not isinstance(blocks, list):
+            raise ConfigError(f"{path.name} : [[{kind}]] doit être une liste de blocs")
+        allowed = set(spec["required"]) | set(spec["optional"])
+        items = []
+        for i, block in enumerate(blocks, start=1):
+            where = f"{path.name}, [[{kind}]] n°{i}"
+            if not isinstance(block, dict):
+                raise ConfigError(f"{where} : un bloc [[{kind}]] est attendu")
+            extra = set(block) - allowed
+            if extra:
+                raise ConfigError(f"{where} : clés inconnues {sorted(extra)} (autorisées : {sorted(allowed)})")
+            item = {}
+            for key in (*spec["required"], *spec["optional"]):
+                value = block.get(key, "")
+                if not isinstance(value, str):
+                    raise ConfigError(f"{where} : « {key} » doit être un texte")
+                if key in spec["required"] and not value.strip():
+                    raise ConfigError(f"{where} : « {key} » manquant ou vide")
+                item[key] = value.strip()
+            if kind == "links" and not item["url"].startswith(("http://", "https://")):
+                raise ConfigError(f"{where} : « url » doit commencer par http:// ou https://")
+            items.append(item)
+        resources[kind] = items
+    return resources

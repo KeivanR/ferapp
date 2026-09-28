@@ -28,13 +28,24 @@ menstruation_age_range = [12, 50]
 
 [display]
 # Diamètre des cercles de complétion (pixels) : ring_size quand beaucoup de nutriments sont
-# suivis, jusqu'à ring_size_max quand il n'y en a qu'un seul (voir ui/home.py).
+# suivis, jusqu'à ring_size_max quand il n'y en a qu'un seul (voir ui/rings.py).
 ring_size = 88
 ring_size_max = 200
 ring_stroke_width = 9
-color_todo = "#FB8C00"       # cercle pas encore complet (orange)
-color_done = "#43A047"       # cercle complet, référence atteinte (vert)
+# Cercles de l'accueil : color_todo tant que l'apport recommandé n'est pas atteint, color_done ensuite.
+# Cases de l'onglet Semaine : color_low sous low_threshold %, color_todo ensuite, color_done à 100 %.
+low_threshold = 50
+color_low = "#E53935"        # apport bas (rouge)
+color_todo = "#FB8C00"       # en cours (orange)
+color_done = "#43A047"       # apport recommandé atteint (vert)
 color_custom_food = "#EF6C00" # aliments personnalisés dans les suggestions (orange)
+
+# Détail d'un cercle (on touche un cercle de l'accueil) : une couleur par aliment, dans cet ordre,
+# du plus gros apport au plus petit. Au-delà, les plus petits apports sont regroupés en
+# « Autres aliments », en chart_color_other. Ordre choisi pour que deux couleurs voisines restent
+# distinguables, y compris pour les personnes daltoniennes : à garder si tu en changes une.
+chart_colors = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7"]
+chart_color_other = "#a8a7a1"
 
 [foods_build]
 # Réglages de build_foods.py (conversion de la table Ciqual xlsx -> foods.csv)
@@ -87,8 +98,8 @@ ciqual = ['^Fer \(mg']
 [nutrients.fer.reference]
 homme = [[3, 7], [10, 11], [17, 13], [200, 11]]
 femme = [[3, 7], [10, 11], [17, 13], [200, 11]]        # non réglée (ménopause, etc.)
-femme_regles = [[3, 7], [10, 11], [200, 16]]           # réglée
-femme_regles_abondantes = [[3, 7], [10, 11], [200, 20]] # abondamment réglée (valeur estimée, à vérifier)
+femme_regles = [[3, 7], [10, 11], [200, 15]]           # réglée
+femme_regles_abondantes = [[3, 7], [10, 11], [200, 18]] # abondamment réglée
 grossesse = 16
 allaitement = 10
 

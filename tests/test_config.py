@@ -4,7 +4,7 @@ import textwrap
 
 import pytest
 
-from config import ConfigError, load_config, load_default_units
+from config import ConfigError, load_config, load_default_units, load_resources
 
 VALID = """
 [nutrients.fer]
@@ -56,7 +56,7 @@ def test_overrides_and_env_variable(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     "mutation, message",
     [
-        ('femme_regles = [[200, 16]]', 'femme_regles = [[200, 16]]\nfemme_regle = [[200, 1]]'),  # faute de frappe
+        ("femme_regles = [[200, 16]]", "femme_regles = [[200, 16]]\nfemme_regle = [[200, 1]]"),  # faute de frappe
     ],
 )
 def test_unknown_reference_key_is_rejected(tmp_path, mutation, message):
@@ -170,3 +170,53 @@ def test_default_units_bad_header_or_missing_file(tmp_path):
         load_default_units(bad)
     with pytest.raises(ConfigError, match="introuvable"):
         load_default_units(tmp_path / "absent.csv")
+
+
+# --- config/ressources.toml ------------------------------------------------------------------
+def write_resources(tmp_path, text: str):
+    path = tmp_path / "ressources.toml"
+    path.write_text(textwrap.dedent(text), encoding="utf-8")
+    return path
+
+
+def test_shipped_resources_are_valid():
+    resources = load_resources()
+    assert resources["links"] and resources["faq"]
+
+
+def test_resources_are_parsed(tmp_path):
+    resources = load_resources(
+        write_resources(
+            tmp_path,
+            """
+            [[links]]
+            group = "Fer"
+            title = "Un lien"
+            url = "https://exemple.fr"
+
+            [[faq]]
+            question = "Pourquoi ?"
+            answer = "Parce que."
+            """,
+        )
+    )
+    assert resources == {
+        "links": [{"group": "Fer", "title": "Un lien", "url": "https://exemple.fr", "description": ""}],
+        "faq": [{"question": "Pourquoi ?", "answer": "Parce que."}],
+    }
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ('[[links]]\ngroup = "g"\ntitle = "t"\n', "url"),  # clé obligatoire manquante
+        ('[[links]]\ngroup = "g"\ntitle = "t"\nurl = "exemple.fr"\n', "http"),  # pas un lien web
+        ('[[faq]]\nquestion = "q"\nanswer = ""\n', "answer"),  # réponse vide
+        ('[[faq]]\nquestion = "q"\nanswer = "r"\ncouleur = "rouge"\n', "clés inconnues"),
+        ('[[faq]]\nquestion = 3\nanswer = "r"\n', "texte"),
+        ('[[videos]]\ntitle = "t"\n', "blocs inconnus"),
+    ],
+)
+def test_invalid_resources_are_rejected(tmp_path, text, expected):
+    with pytest.raises(ConfigError, match=expected):
+        load_resources(write_resources(tmp_path, text))

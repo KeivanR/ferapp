@@ -7,9 +7,11 @@ Construire l'APK :          flet build apk
 Organisation du code (voir README.md pour le détail de chaque fichier) :
   config/, config.py         réglages, apports de référence et unités par défaut (édités à la main,
                              validés au démarrage)
-  nutrition.py, storage.py   logique métier et sauvegarde locale (testées, sans dépendance à Flet)
+  nutrition.py, history.py   logique métier : un jour, plusieurs jours (testées, sans Flet)
+  storage.py                 sauvegarde locale
   build_foods.py             génère foods.csv à partir de la table Ciqual (à lancer à la main)
-  ui/                        interface graphique : un fichier par écran, voir ui/app.py
+  ui/                        interface graphique : un fichier par écran, voir ui/app.py ;
+                             onglets de la barre du bas : ui/navigation.py
   tests/                     tests automatiques (lancer « pytest » depuis la racine)
 """
 

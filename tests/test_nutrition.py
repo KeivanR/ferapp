@@ -281,7 +281,13 @@ def test_top_nutrient_uses_share_of_recommendation_not_raw_amount():
     from nutrition import NUTRIENTS, top_nutrient
 
     recs = {n["key"]: 1e9 for n in NUTRIENTS} | {
-        "fer": 16, "calcium": 950, "magnesium": 300, "zinc": 9, "potassium": 3500, "iode": 150, "selenium": 70,
+        "fer": 16,
+        "calcium": 950,
+        "magnesium": 300,
+        "zinc": 9,
+        "potassium": 3500,
+        "iode": 150,
+        "selenium": 70,
     }
     entry = {"food": "lentilles cuites", "grams": 100}
     top = top_nutrient(entry, FOODS, recs, NUTRIENTS)
@@ -407,7 +413,11 @@ def test_storage_defaults_and_old_files(tmp_path, monkeypatch):
 
     monkeypatch.setenv("FLET_APP_STORAGE_DATA", str(tmp_path))
     assert storage.load_state() == {
-        "profile": None, "journal": {}, "custom_foods": [], "food_units": {}, "last_units": {}
+        "profile": None,
+        "journal": {},
+        "custom_foods": [],
+        "food_units": {},
+        "last_units": {},
     }
     # ancien fichier sans "custom_foods" ni "food_units"
     (tmp_path / "state.json").write_text(json.dumps({"profile": {"age": 30}, "journal": {}}))
@@ -563,3 +573,33 @@ def test_remember_unit_ignores_unknown_food():
     last_units: dict[str, str] = {}
     remember_unit("xyz", "fruit", CODED_FOODS, last_units)
     assert last_units == {}
+
+
+# --- détail d'un cercle : contribution de chaque aliment ----------------------------------------
+def test_food_contributions_sorted_and_cumulated():
+    from nutrition import food_contributions
+
+    entries = [
+        {"food": "lentilles cuites", "grams": 100},  # fer 3,3 mg
+        {"food": "pomme", "grams": 100},
+        {"food": "lentilles cuites", "grams": 100},  # même aliment : cumulé
+        {"food": "epinards cuits", "grams": 100},
+    ]
+    items = food_contributions(entries, FOODS, "fer")
+    assert [i["food"] for i in items][0] == "lentilles cuites"
+    assert items[0]["amount"] == pytest.approx(6.6)
+    assert all(a["amount"] >= b["amount"] for a, b in zip(items, items[1:]))
+    assert all(i["amount"] > 0 and not i["other"] for i in items)
+    assert food_contributions([], FOODS, "fer") == []
+
+
+def test_food_contributions_folds_the_tail_into_other():
+    from nutrition import OTHER_FOODS, food_contributions
+
+    entries = [{"food": name, "grams": 100} for name in ("lentilles cuites", "epinards cuits", "pois chiches cuits")]
+    full = food_contributions(entries, FOODS, "fer")
+    folded = food_contributions(entries, FOODS, "fer", max_foods=1)
+    assert len(folded) == 2 and folded[0] == full[0]  # 1 aliment gardé + « Autres aliments »
+    assert folded[1]["food"] == OTHER_FOODS and folded[1]["other"]
+    assert folded[1]["amount"] == pytest.approx(sum(i["amount"] for i in full[1:]))
+    assert food_contributions(entries, FOODS, "fer", max_foods=3) == full  # pas besoin de regrouper
