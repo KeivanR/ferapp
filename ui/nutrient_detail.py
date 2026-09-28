@@ -1,4 +1,5 @@
-"""Détail d'un nutriment, ouvert en touchant son cercle sur l'accueil : le cercle s'affiche en
+"""Détail d'un nutriment pour une journée, ouvert en touchant son cercle sur l'accueil (le jour
+même) ou une case de l'onglet Semaine (le jour de la colonne) : le cercle s'affiche en
 grand, par-dessus la page floutée, et sa barre de progression est découpée en segments de
 couleur, un par aliment du jour, proportionnels à ce que chacun apporte. La liste en dessous
 donne, pour chaque couleur, l'aliment et sa quantité.
@@ -22,7 +23,11 @@ from .widgets import fmt
 BIG_RING_SIZE = 200
 
 
-def show_nutrient_detail(ctx: AppContext, nutrient: dict, entries: list[dict], recommended: float) -> None:
+def show_nutrient_detail(
+    ctx: AppContext, nutrient: dict, entries: list[dict], recommended: float, day_label: str | None = None
+) -> None:
+    """`entries` : les entrées du journal de la journée ; `day_label` : la journée, affichée sous le
+    titre (ex. « mardi 23 septembre ») — rien pour aujourd'hui."""
     items = food_contributions(entries, ctx.foods, nutrient["key"], max_foods=len(CHART_COLORS))
     colors = [CHART_COLOR_OTHER if item["other"] else CHART_COLORS[i] for i, item in enumerate(items)]
     total = sum(item["amount"] for item in items)
@@ -65,7 +70,8 @@ def show_nutrient_detail(ctx: AppContext, nutrient: dict, entries: list[dict], r
         legend = ft.Column([legend_row(item, color) for item, color in zip(items, colors)], spacing=8)
         caption = "Part de chaque aliment dans l'apport du jour (% = part de l'apport recommandé)."
     else:
-        legend = ft.Text("Aucun aliment noté aujourd'hui n'en apporte.", color=ft.Colors.GREY_700)
+        when = "ce jour-là" if day_label else "aujourd'hui"
+        legend = ft.Text(f"Aucun aliment noté {when} n'en apporte.", color=ft.Colors.GREY_700)
         caption = None
 
     close = None  # défini juste après show_popup, utilisé par le bouton ×
@@ -73,7 +79,14 @@ def show_nutrient_detail(ctx: AppContext, nutrient: dict, entries: list[dict], r
         [
             ft.Row(
                 [
-                    ft.Text(nutrient["label"], size=22, weight=ft.FontWeight.BOLD, expand=True),
+                    ft.Column(
+                        [
+                            ft.Text(nutrient["label"], size=22, weight=ft.FontWeight.BOLD),
+                            *([ft.Text(day_label, color=ft.Colors.GREY_700)] if day_label else []),
+                        ],
+                        spacing=0,
+                        expand=True,
+                    ),
                     ft.IconButton(ft.Icons.CLOSE, tooltip="Fermer", on_click=lambda e: close()),
                 ],
             ),

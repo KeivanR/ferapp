@@ -1,6 +1,7 @@
 """Onglet « Semaine » : taux de complétion de chaque nutriment suivi, jour par jour, du lundi
 au dimanche, avec la moyenne de la semaine. Les flèches du haut passent aux semaines
-précédentes / suivantes.
+précédentes / suivantes. Toucher une case remplie ouvre le détail du nutriment pour ce jour-là
+(ui/nutrient_detail.py), comme un cercle de l'accueil.
 
 Les calculs sont dans history.py ; ce fichier ne fait que les afficher.
 """
@@ -8,6 +9,7 @@ Les calculs sont dans history.py ; ce fichier ne fait que les afficher.
 from __future__ import annotations
 
 import datetime
+from typing import Callable
 
 import flet as ft
 
@@ -16,9 +18,11 @@ from nutrition import recommended_intakes, selected_nutrients
 
 from .context import AppContext
 from .layout import screen_title, show_screen
+from .nutrient_detail import show_nutrient_detail
 from .style import COLOR_DONE, LOW_THRESHOLD, level_color
 
 DAY_LETTERS = ["L", "M", "M", "J", "V", "S", "D"]
+DAY_NAMES = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
 MONTHS = [
     "janvier", "février", "mars", "avril", "mai", "juin",
     "juillet", "août", "septembre", "octobre", "novembre", "décembre",
@@ -38,14 +42,25 @@ def week_label(start: datetime.date) -> str:
     return f"du {start.day} au {end.day} {MONTHS[end.month - 1]} {end.year}"
 
 
+def day_label(day: datetime.date, today: datetime.date) -> str:
+    """« aujourd'hui », « hier », sinon « mardi 23 septembre »."""
+    if day == today:
+        return "aujourd'hui"
+    if day == today - datetime.timedelta(days=1):
+        return "hier"
+    return f"{DAY_NAMES[day.weekday()]} {day.day} {MONTHS[day.month - 1]}"
+
+
 def rate_of(day_rates: dict[str, float] | None, key: str) -> float | None:
     return None if day_rates is None else day_rates[key]
 
 
-def rate_cell(ratio: float | None, future: bool) -> ft.Control:
+def rate_cell(ratio: float | None, future: bool, on_click: Callable[[], None] | None = None) -> ft.Control:
     """Une case du tableau : coche verte (apport atteint), sinon le pourcentage sur fond rouge (bas)
     ou orange (en cours), d'autant plus soutenu qu'on s'approche de 100 % ; « – » si rien n'a été
-    noté, vide pour un jour à venir. Couleurs : ui/style.level_color."""
+    noté, vide pour un jour à venir. Couleurs : ui/style.level_color. `on_click` : appelé quand on
+    touche la case (seulement pour un jour où quelque chose a été noté)."""
+    clickable = on_click is not None and ratio is not None and not future
     if future:
         content, bgcolor = None, None
     elif ratio is None:
@@ -62,6 +77,8 @@ def rate_cell(ratio: float | None, future: bool) -> ft.Control:
         alignment=ft.Alignment.CENTER,
         border_radius=8,
         bgcolor=bgcolor,
+        ink=clickable,
+        on_click=(lambda e: on_click()) if clickable else None,
     )
 
 
@@ -125,6 +142,12 @@ def show_week(ctx: AppContext) -> None:
     displayed = {"start": week_start(today)}  # semaine affichée, modifiée par les flèches
     body = ft.Column(spacing=12)
 
+    def open_detail(nutrient: dict, day: datetime.date) -> None:
+        """Toucher une case : détail du nutriment ce jour-là, aliment par aliment."""
+        entries = ctx.state["journal"].get(day.isoformat(), [])
+        label = None if day == today else day_label(day, today)
+        show_nutrient_detail(ctx, nutrient, entries, recommended[nutrient["key"]], day_label=label)
+
     def change_week(weeks: int) -> None:
         displayed["start"] += datetime.timedelta(weeks=weeks)
         render()
@@ -158,7 +181,14 @@ def show_week(ctx: AppContext) -> None:
                     ft.Row(
                         [
                             nutrient_label(n["label"], averages[n["key"]]),
-                            *[rate_cell(rate_of(rates[d], n["key"]), future=d > today) for d in days],
+                            *[
+                                rate_cell(
+                                    rate_of(rates[d], n["key"]),
+                                    future=d > today,
+                                    on_click=lambda n=n, d=d: open_detail(n, d),
+                                )
+                                for d in days
+                            ],
                         ],
                         spacing=CELL_SPACING,
                         vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -176,7 +206,8 @@ def show_week(ctx: AppContext) -> None:
         body.controls = [
             screen_title("Semaine", week_label(start), trailing=arrows),
             ft.Text(
-                "Part de l'apport recommandé atteinte chaque jour, pour chaque nutriment suivi.",
+                "Part de l'apport recommandé atteinte chaque jour, pour chaque nutriment suivi. "
+                "Touche une case pour voir ce que chaque aliment a apporté.",
                 color=ft.Colors.GREY_700,
             ),
             table,

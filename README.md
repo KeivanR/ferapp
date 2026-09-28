@@ -29,7 +29,8 @@ ruff check . && ruff format . # vérifie le code et le remet en forme (pip insta
   - **Accueil** : la page du jour (cercles, saisie des repas, repas du jour) ;
   - **Semaine** : un tableau des nutriments suivis (lignes) jour par jour du lundi au dimanche (colonnes). Chaque
     case donne la part de l'apport recommandé atteinte ce jour-là (coche verte = atteint, « – » = rien noté) et
-    chaque ligne sa moyenne sur les jours notés. Les flèches en haut font défiler les semaines passées ;
+    chaque ligne sa moyenne sur les jours notés. Les flèches en haut font défiler les semaines passées.
+    Toucher une case remplie ouvre le détail du nutriment pour ce jour-là, comme un cercle de l'accueil ;
   - **Ressources** : des liens utiles (carence en fer, recommandations alimentaires, sources des données) et une
     FAQ dépliable, question par question. Tout ce contenu est dans `config/ressources.toml`.
 - **Profil** : l'icône en haut de la page principale ouvre une **fiche en lecture seule** (âge, sexe, situation,
@@ -42,7 +43,7 @@ ruff check . && ruff format . # vérifie le code et le remet en forme (pip insta
   fois l'apport recommandé atteint), dans une grille centrée qui passe à la ligne selon la largeur de l'écran.
   Leur taille dépend du nombre de nutriments suivis (`ring_size_max` dans `config.toml`) : un seul nutriment suivi
   -> un très grand cercle, beaucoup de nutriments -> des cercles plus petits (jusqu'au minimum `ring_size`).
-- **Détail d'un nutriment** : toucher un cercle l'ouvre en grand, par-dessus la page floutée. Sa barre de
+- **Détail d'un nutriment** : toucher un cercle (ou une case de l'onglet Semaine) l'ouvre en grand, par-dessus la page floutée. Sa barre de
   progression y est découpée en segments de couleur, un par aliment du jour, proportionnels à ce que chacun
   apporte ; la liste en dessous donne pour chaque couleur l'aliment, la quantité apportée et la part de l'apport
   recommandé. Au-delà de 7 aliments, les plus petits apports sont regroupés en « Autres aliments » (gris).
@@ -158,7 +159,7 @@ nutrition_app/
     ├── custom_food.py                     écran « Ajouter un aliment »
     ├── home.py                             onglet Accueil (saisie, cercles, journal)
     ├── rings.py                            cercles de l'accueil (grille, grand cercle à segments)
-    ├── nutrient_detail.py                  détail d'un nutriment (cercle agrandi, part de chaque aliment)
+    ├── nutrient_detail.py                  détail d'un nutriment pour un jour (cercle agrandi, part de chaque aliment)
     ├── week.py                             onglet Semaine (taux jour par jour)
     └── resources.py                        onglet Ressources (liens, FAQ)
 ```
