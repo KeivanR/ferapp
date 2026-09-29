@@ -54,11 +54,16 @@ def show_screen(
     page.add(ft.SafeArea(body, expand=centered))
 
 
-def screen_title(title: str, subtitle: str | None = None, trailing: ft.Control | None = None) -> ft.Control:
+def screen_title(
+    title: str, subtitle: str | ft.Control | None = None, trailing: ft.Control | None = None
+) -> ft.Control:
     """En-tête des écrans à onglet : grand titre, sous-titre gris facultatif, et un bouton
-    facultatif aligné à droite (ex. accès au profil)."""
+    facultatif aligné à droite (ex. accès au profil). `subtitle` peut être un ft.Text que l'écran
+    modifie ensuite lui-même (ex. la semaine affichée)."""
     texts: list[ft.Control] = [ft.Text(title, size=26, weight=ft.FontWeight.BOLD)]
-    if subtitle:
+    if isinstance(subtitle, ft.Control):
+        texts.append(subtitle)
+    elif subtitle:
         texts.append(ft.Text(subtitle, color=ft.Colors.GREY_700))
     return ft.Row(
         [ft.Column(texts, spacing=0, expand=True), *([trailing] if trailing else [])],

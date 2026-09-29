@@ -7,8 +7,6 @@ Utilisé par ui/home.py (ajout du jour, modification d'une entrée) et ui/custom
 
 from __future__ import annotations
 
-from typing import Callable
-
 import flet as ft
 
 from nutrition import GRAMS_UNIT, find_food, normalize, parse_grams, search_foods
@@ -312,44 +310,49 @@ def validate_with_quantity(ctx: AppContext, food_input: ft.TextField, quantity: 
     return food, grams
 
 
-SWIPE_MIN_DISTANCE = 50  # px : un glissement plus court est ignoré (évite les faux départs)
-SWIPE_MIN_SPEED = 300  # px/s : un glissement rapide compte même s'il est court
-WHEEL_STEP = 120  # défilement horizontal (pavé tactile, molette + Maj) nécessaire pour un pas
+PAGE_SNAP_MS = 250  # durée du calage sur une page entière après un glissement à la souris
+PAGE_SWITCH_FRACTION = 0.25  # part de la largeur à glisser pour changer de page
+PAGE_SWITCH_SPEED = 400  # px/s : un geste rapide change de page même s'il est court
 
 
-def swipeable(content: ft.Control, on_previous: Callable[[], None], on_next: Callable[[], None]) -> ft.Control:
-    """Rend `content` « glissable » horizontalement, comme un calendrier : glisser vers la droite
-    appelle on_previous (on revient en arrière), vers la gauche on_next. Sur ordinateur, le
-    défilement horizontal du pavé tactile (ou Maj + molette) fait de même. Les touchers simples
-    (cases cliquables) et le défilement vertical de la page ne sont pas gênés."""
-    drag = {"distance": 0.0}
-    wheel = {"total": 0.0}
+def mouse_draggable(pages: ft.PageView) -> ft.Control:
+    """Permet aussi de faire glisser un ft.PageView à la souris (ordinateur, navigateur), comme au
+    doigt : les pages suivent le pointeur, puis se calent sur une page entière au relâchement.
 
-    def on_drag_start(e) -> None:
-        drag["distance"] = 0.0
+    Au doigt et au pavé tactile, le PageView défile déjà tout seul (défilement natif) : ce
+    détecteur n'écoute que la souris, il ne gêne donc ni ces gestes ni les touchers simples."""
+    # "start" : la page au début du geste. On calcule la position à partir d'elle, et non de
+    # pages.selected_index, qui change pendant le geste dès qu'on passe la moitié d'une page.
+    state = {"width": 0.0, "drag": 0.0, "start": 0}
 
-    def on_drag_update(e) -> None:
-        drag["distance"] += e.primary_delta or 0.0
+    def on_size_change(e) -> None:
+        state["width"] = e.width
 
-    def on_drag_end(e) -> None:
-        distance, speed = drag["distance"], e.primary_velocity or 0.0
-        if abs(distance) < SWIPE_MIN_DISTANCE and abs(speed) < SWIPE_MIN_SPEED:
-            return
-        (on_previous if (distance or speed) > 0 else on_next)()
+    def on_start(e) -> None:
+        state["drag"] = 0.0
+        state["start"] = pages.selected_index
 
-    def on_scroll(e) -> None:
-        dx = e.scroll_delta.x if e.scroll_delta else 0.0
-        if not dx:
-            return  # défilement vertical : laissé à la page
-        wheel["total"] += dx
-        if abs(wheel["total"]) >= WHEEL_STEP:
-            (on_next if wheel["total"] > 0 else on_previous)()
-            wheel["total"] = 0.0
+    async def on_update(e) -> None:
+        state["drag"] += e.primary_delta or 0.0
+        last = (len(pages.controls) - 1) * state["width"]
+        await pages.jump_to(max(0.0, min(state["start"] * state["width"] - state["drag"], last)))
+
+    async def on_end(e) -> None:
+        drag, speed, width = state["drag"], e.primary_velocity or 0.0, state["width"] or 1
+        index = state["start"]
+        if drag > width * PAGE_SWITCH_FRACTION or speed > PAGE_SWITCH_SPEED:
+            index -= 1  # glissé vers la droite : page précédente
+        elif drag < -width * PAGE_SWITCH_FRACTION or speed < -PAGE_SWITCH_SPEED:
+            index += 1
+        index = max(0, min(index, len(pages.controls) - 1))
+        await pages.go_to_page(index, animation_duration=PAGE_SNAP_MS, animation_curve=ft.AnimationCurve.EASE_OUT)
 
     return ft.GestureDetector(
-        content=content,
-        on_horizontal_drag_start=on_drag_start,
-        on_horizontal_drag_update=on_drag_update,
-        on_horizontal_drag_end=on_drag_end,
-        on_scroll=on_scroll,
+        content=pages,
+        allowed_devices=[ft.PointerDeviceType.MOUSE],
+        drag_interval=16,
+        on_horizontal_drag_start=on_start,
+        on_horizontal_drag_update=on_update,
+        on_horizontal_drag_end=on_end,
+        on_size_change=on_size_change,
     )

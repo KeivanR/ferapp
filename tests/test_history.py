@@ -47,3 +47,15 @@ def test_average_ignores_days_without_entries():
 def test_average_is_none_for_an_empty_week():
     rates = rates_by_day({}, week_days(MONDAY), FOODS, RECOMMENDED)
     assert average_rates(rates, ["fer"]) == {"fer": None}
+
+
+def test_browsable_weeks_from_first_noted_week_to_current():
+    from history import browsable_weeks
+
+    today = datetime.date(2026, 9, 29)  # mardi
+    journal = {"2026-09-02": [{"food": "pomme", "grams": 100}], "2026-09-10": [], "2026-10-05": [{"x": 1}]}
+    weeks = browsable_weeks(journal, today)
+    assert weeks[0] == datetime.date(2026, 8, 31) and weeks[-1] == datetime.date(2026, 9, 28)
+    assert all((b - a).days == 7 for a, b in zip(weeks, weeks[1:]))
+    assert browsable_weeks({}, today) == [datetime.date(2026, 9, 28)]  # rien noté : la semaine en cours
+    assert len(browsable_weeks({}, today, min_weeks=4)) == 4

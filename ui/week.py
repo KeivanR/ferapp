@@ -1,8 +1,10 @@
 """Onglet « Semaine » : taux de complétion de chaque nutriment suivi, jour par jour, du lundi
 au dimanche, avec la moyenne de la semaine. Les flèches du haut passent aux semaines
 précédentes / suivantes ; on peut aussi faire glisser le tableau (vers la droite = semaine
-précédente), comme un calendrier. Toucher une case remplie ouvre le détail du nutriment pour ce jour-là
-(ui/nutrient_detail.py), comme un cercle de l'accueil.
+précédente) : il suit le doigt, puis se cale sur une semaine entière, du lundi au dimanche
+(ft.PageView, un défilement natif). Chaque page contient sa propre semaine, moyennes comprises.
+Toucher une case remplie ouvre le détail du nutriment pour ce jour-là (ui/nutrient_detail.py),
+comme un cercle de l'accueil.
 
 Les calculs sont dans history.py ; ce fichier ne fait que les afficher.
 """
@@ -14,14 +16,14 @@ from typing import Callable
 
 import flet as ft
 
-from history import DAYS_PER_WEEK, average_rates, rates_by_day, week_days, week_start
+from history import DAYS_PER_WEEK, average_rates, browsable_weeks, rates_by_day, week_days
 from nutrition import recommended_intakes, selected_nutrients
 
 from .context import AppContext
 from .layout import screen_title, show_screen
 from .nutrient_detail import show_nutrient_detail
 from .style import COLOR_DONE, LOW_THRESHOLD, level_color
-from .widgets import swipeable
+from .widgets import mouse_draggable
 
 DAY_LETTERS = ["L", "M", "M", "J", "V", "S", "D"]
 DAY_NAMES = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
@@ -32,6 +34,11 @@ MONTHS = [
 LABEL_WIDTH = 100  # colonne des noms de nutriments ; les 7 colonnes de jours se partagent le reste
 CELL_HEIGHT = 34
 CELL_SPACING = 4
+HEADER_HEIGHT = 40  # ligne des jours
+ROW_HEIGHT = 38  # une ligne de nutriment (nom + moyenne)
+SUMMARY_HEIGHT = 24  # « 4 jours notés sur 7 »
+MIN_WEEKS = 4  # semaines consultables au minimum, même sans historique
+ARROW_ANIMATION_MS = 350  # glissement quand on utilise les flèches
 
 
 def week_label(start: datetime.date) -> str:
@@ -136,13 +143,69 @@ def legend() -> ft.Control:
     )
 
 
+def week_table(
+    start: datetime.date,
+    ctx: AppContext,
+    shown: list[dict],
+    recommended: dict[str, float],
+    today: datetime.date,
+    on_cell_click: Callable[[dict, datetime.date], None],
+) -> ft.Control:
+    """Le tableau d'une semaine (une page du calendrier) : en-tête des jours, une ligne par nutriment
+    avec sa moyenne, et le nombre de jours notés. Hauteur fixe : voir table_height."""
+    days = week_days(start)
+    rates = rates_by_day(ctx.state["journal"], days, ctx.foods, recommended)
+    averages = average_rates(rates, [n["key"] for n in shown])
+    filled = sum(r is not None for r in rates.values())
+    summary = (
+        "Aucun nutriment suivi : choisis-en dans ton profil."
+        if not shown
+        else f"{filled} jour{'s' if filled > 1 else ''} noté{'s' if filled > 1 else ''} sur 7."
+    )
+    header = ft.Row([ft.Container(width=LABEL_WIDTH), *[day_header(d, today) for d in days]], spacing=CELL_SPACING)
+    rows = [
+        ft.Row(
+            [
+                nutrient_label(n["label"], averages[n["key"]]),
+                *[
+                    rate_cell(
+                        rate_of(rates[d], n["key"]),
+                        future=d > today,
+                        on_click=lambda n=n, d=d: on_cell_click(n, d),
+                    )
+                    for d in days
+                ],
+            ],
+            spacing=CELL_SPACING,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        for n in shown
+    ]
+    return ft.Column(
+        [
+            ft.Container(header, height=HEADER_HEIGHT),
+            *[ft.Container(row, height=ROW_HEIGHT) for row in rows],
+            ft.Container(
+                ft.Text(summary, color=ft.Colors.GREY_700), height=SUMMARY_HEIGHT, alignment=ft.Alignment.CENTER_LEFT
+            ),
+        ],
+        spacing=CELL_SPACING,
+    )
+
+
+def table_height(nutrient_count: int) -> int:
+    """Hauteur d'une page du calendrier (le PageView a besoin d'une hauteur fixe)."""
+    blocks = [HEADER_HEIGHT, *[ROW_HEIGHT] * nutrient_count, SUMMARY_HEIGHT]
+    return sum(blocks) + CELL_SPACING * (len(blocks) - 1)
+
+
 def show_week(ctx: AppContext) -> None:
     profile = ctx.get_profile()
     recommended = recommended_intakes(profile)
     shown = selected_nutrients(profile)
     today = datetime.date.today()
-    displayed = {"start": week_start(today)}  # semaine affichée, modifiée par les flèches
-    body = ft.Column(spacing=12)
+    starts = browsable_weeks(ctx.state["journal"], today, min_weeks=MIN_WEEKS)  # plus ancienne -> en cours
+    height = table_height(len(shown))
 
     def open_detail(nutrient: dict, day: datetime.date) -> None:
         """Toucher une case : détail du nutriment ce jour-là, aliment par aliment."""
@@ -150,78 +213,65 @@ def show_week(ctx: AppContext) -> None:
         label = None if day == today else day_label(day, today)
         show_nutrient_detail(ctx, nutrient, entries, recommended[nutrient["key"]], day_label=label)
 
-    def change_week(weeks: int) -> None:
-        new_start = displayed["start"] + datetime.timedelta(weeks=weeks)
-        if new_start > week_start(today):
-            return  # pas de semaine future
-        displayed["start"] = new_start
-        render()
+    # Une page par semaine. Seules la semaine affichée et ses voisines sont construites (au fil des
+    # glissements) : les autres restent des cadres vides de la bonne hauteur, pour rester léger même
+    # avec des mois d'historique.
+    pages = [ft.Container(height=height) for _ in starts]
 
-    def render() -> None:
-        start = displayed["start"]
-        days = week_days(start)
-        rates = rates_by_day(ctx.state["journal"], days, ctx.foods, recommended)
-        averages = average_rates(rates, [n["key"] for n in shown])
-        filled = sum(r is not None for r in rates.values())
+    def build(index: int) -> None:
+        if 0 <= index < len(pages) and pages[index].content is None:
+            pages[index].content = week_table(starts[index], ctx, shown, recommended, today, open_detail)
 
-        arrows = ft.Row(
-            [
-                ft.IconButton(ft.Icons.CHEVRON_LEFT, tooltip="Semaine précédente", on_click=lambda e: change_week(-1)),
-                ft.IconButton(
-                    ft.Icons.CHEVRON_RIGHT,
-                    tooltip="Semaine suivante",
-                    on_click=lambda e: change_week(1),
-                    disabled=start >= week_start(today),  # pas de semaine future
-                ),
-            ],
-            spacing=0,
-        )
-        table = ft.Column(
-            [
-                ft.Row(
-                    [ft.Container(width=LABEL_WIDTH), *[day_header(d, today) for d in days]],
-                    spacing=CELL_SPACING,
-                ),
-                *[
-                    ft.Row(
-                        [
-                            nutrient_label(n["label"], averages[n["key"]]),
-                            *[
-                                rate_cell(
-                                    rate_of(rates[d], n["key"]),
-                                    future=d > today,
-                                    on_click=lambda n=n, d=d: open_detail(n, d),
-                                )
-                                for d in days
-                            ],
-                        ],
-                        spacing=CELL_SPACING,
-                        vertical_alignment=ft.CrossAxisAlignment.CENTER,
-                    )
-                    for n in shown
-                ],
-            ],
-            spacing=CELL_SPACING,
-        )
-        summary = (
-            "Aucun nutriment suivi : choisis-en dans ton profil."
-            if not shown
-            else f"{filled} jour{'s' if filled > 1 else ''} noté{'s' if filled > 1 else ''} sur 7."
-        )
-        body.controls = [
-            screen_title("Semaine", week_label(start), trailing=arrows),
+    subtitle = ft.Text(color=ft.Colors.GREY_700)
+    previous_button = ft.IconButton(ft.Icons.CHEVRON_LEFT, tooltip="Semaine précédente")
+    next_button = ft.IconButton(ft.Icons.CHEVRON_RIGHT, tooltip="Semaine suivante")
+
+    def show_index(index: int) -> None:
+        """Après un glissement (ou une flèche) : prépare les semaines voisines et met l'en-tête à jour."""
+        for i in (index - 1, index, index + 1):
+            build(i)
+        subtitle.value = week_label(starts[index])
+        previous_button.disabled = index == 0
+        next_button.disabled = index == len(starts) - 1  # pas de semaine future
+        ctx.page.update()
+
+    calendar = ft.PageView(
+        pages,
+        selected_index=len(starts) - 1,  # la semaine en cours, tout à droite
+        height=height,
+        on_change=lambda e: show_index(calendar.selected_index),
+    )
+
+    async def go(delta: int) -> None:
+        index = calendar.selected_index + delta
+        if 0 <= index < len(starts):
+            await calendar.go_to_page(
+                index, animation_duration=ARROW_ANIMATION_MS, animation_curve=ft.AnimationCurve.EASE_IN_OUT
+            )
+
+    async def on_previous(e) -> None:
+        await go(-1)
+
+    async def on_next(e) -> None:
+        await go(1)
+
+    previous_button.on_click = on_previous
+    next_button.on_click = on_next
+
+    body = ft.Column(
+        [
+            screen_title("Semaine", subtitle, trailing=ft.Row([previous_button, next_button], spacing=0)),
             ft.Text(
                 "Part de l'apport recommandé atteinte chaque jour, pour chaque nutriment suivi. "
                 "Touche une case pour voir ce que chaque aliment a apporté, "
                 "fais glisser le tableau vers la droite pour remonter dans le temps.",
                 color=ft.Colors.GREY_700,
             ),
-            swipeable(table, on_previous=lambda: change_week(-1), on_next=lambda: change_week(1)),
-            ft.Text(summary, color=ft.Colors.GREY_700),
+            mouse_draggable(calendar),
             ft.Divider(height=16),
             legend(),
-        ]
-        ctx.page.update()
-
+        ],
+        spacing=12,
+    )
+    show_index(len(starts) - 1)  # construit la semaine en cours et la précédente avant l'affichage
     show_screen(ctx, body, tab="semaine")
-    render()

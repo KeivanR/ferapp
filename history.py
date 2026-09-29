@@ -52,3 +52,14 @@ def average_rates(rates: dict[datetime.date, dict[str, float] | None], keys: lis
     a été noté (un jour oublié ne fait pas baisser la moyenne) ; None si aucun jour n'en a."""
     filled = [r for r in rates.values() if r is not None]
     return {k: (sum(r[k] for r in filled) / len(filled) if filled else None) for k in keys}
+
+
+def browsable_weeks(journal: dict[str, list[dict]], today: datetime.date, min_weeks: int = 1) -> list[datetime.date]:
+    """Lundis des semaines consultables, de la plus ancienne à la semaine en cours : depuis la première
+    semaine où quelque chose a été noté, et au moins `min_weeks` semaines."""
+    current = week_start(today)
+    noted = [datetime.date.fromisoformat(day) for day, entries in journal.items() if entries]
+    first = min([week_start(d) for d in noted if d <= today], default=current)
+    first = min(first, current - datetime.timedelta(weeks=min_weeks - 1))
+    count = (current - first).days // DAYS_PER_WEEK + 1
+    return [first + datetime.timedelta(weeks=i) for i in range(count)]
