@@ -31,7 +31,8 @@ ruff check . && ruff format . # vérifie le code et le remet en forme (pip insta
     case donne la part de l'apport recommandé atteinte ce jour-là (coche verte = atteint, « – » = rien noté) et
     chaque ligne sa moyenne sur les jours notés. Pour revoir les semaines passées, fais glisser le tableau vers la
     droite (vers la gauche pour revenir), au doigt, à la souris ou au pavé tactile : le tableau suit le geste
-    puis se cale sur une semaine entière, du lundi au dimanche. Les flèches en haut font le même glissement.
+    puis se cale sur une semaine entière, du lundi au dimanche (seuls les jours et les cases glissent, la colonne
+    des nutriments reste en place). Les flèches en haut font le même glissement.
     Toucher une case remplie ouvre le détail du nutriment pour ce jour-là, comme un cercle de l'accueil ;
   - **Ressources** : des liens utiles (carence en fer, recommandations alimentaires, sources des données) et une
     FAQ dépliable, question par question. Tout ce contenu est dans `config/ressources.toml`.

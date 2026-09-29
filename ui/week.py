@@ -2,7 +2,8 @@
 au dimanche, avec la moyenne de la semaine. Les flèches du haut passent aux semaines
 précédentes / suivantes ; on peut aussi faire glisser le tableau (vers la droite = semaine
 précédente) : il suit le doigt, puis se cale sur une semaine entière, du lundi au dimanche
-(ft.PageView, un défilement natif). Chaque page contient sa propre semaine, moyennes comprises.
+(ft.PageView, un défilement natif). Seuls les jours et les cases glissent : la colonne des
+nutriments reste fixe à gauche, et ses moyennes se mettent à jour quand la semaine change.
 Toucher une case remplie ouvre le détail du nutriment pour ce jour-là (ui/nutrient_detail.py),
 comme un cercle de l'accueil.
 
@@ -16,7 +17,7 @@ from typing import Callable
 
 import flet as ft
 
-from history import DAYS_PER_WEEK, average_rates, browsable_weeks, rates_by_day, week_days
+from history import DAYS_PER_WEEK, WeekSummary, browsable_weeks, week_summary
 from nutrition import recommended_intakes, selected_nutrients
 
 from .context import AppContext
@@ -109,18 +110,27 @@ def day_header(day: datetime.date, today: datetime.date) -> ft.Control:
     )
 
 
-def nutrient_label(label: str, average: float | None) -> ft.Control:
-    avg_text = "moy. –" if average is None else f"moy. {average * 100:.0f} %"
+def nutrient_label(label: str, average_text: ft.Text) -> ft.Control:
+    """Nom d'un nutriment et sa moyenne, dans la colonne fixe de gauche. `average_text` est mis à
+    jour par set_average à chaque changement de semaine."""
     return ft.Container(
-        ft.Column(
-            [
-                ft.Text(label, size=13, weight=ft.FontWeight.W_600),
-                ft.Text(avg_text, size=11, color=COLOR_DONE if (average or 0) >= 1 else ft.Colors.GREY_700),
-            ],
-            spacing=0,
-        ),
+        ft.Column([ft.Text(label, size=13, weight=ft.FontWeight.W_600), average_text], spacing=0),
         width=LABEL_WIDTH,
+        height=ROW_HEIGHT,
+        alignment=ft.Alignment.CENTER_LEFT,
     )
+
+
+def set_average(text: ft.Text, average: float | None) -> None:
+    text.value = "moy. –" if average is None else f"moy. {average * 100:.0f} %"
+    text.color = COLOR_DONE if (average or 0) >= 1 else ft.Colors.GREY_700
+
+
+def summary_text(summary: WeekSummary, shown: list[dict]) -> str:
+    if not shown:
+        return "Aucun nutriment suivi : choisis-en dans ton profil."
+    n = summary.filled_days
+    return f"{n} jour{'s' if n > 1 else ''} noté{'s' if n > 1 else ''} sur 7."
 
 
 def legend() -> ft.Control:
@@ -144,37 +154,23 @@ def legend() -> ft.Control:
 
 
 def week_table(
-    start: datetime.date,
-    ctx: AppContext,
+    summary: WeekSummary,
     shown: list[dict],
-    recommended: dict[str, float],
     today: datetime.date,
     on_cell_click: Callable[[dict, datetime.date], None],
 ) -> ft.Control:
-    """Le tableau d'une semaine (une page du calendrier) : en-tête des jours, une ligne par nutriment
-    avec sa moyenne, et le nombre de jours notés. Hauteur fixe : voir table_height."""
-    days = week_days(start)
-    rates = rates_by_day(ctx.state["journal"], days, ctx.foods, recommended)
-    averages = average_rates(rates, [n["key"] for n in shown])
-    filled = sum(r is not None for r in rates.values())
-    summary = (
-        "Aucun nutriment suivi : choisis-en dans ton profil."
-        if not shown
-        else f"{filled} jour{'s' if filled > 1 else ''} noté{'s' if filled > 1 else ''} sur 7."
-    )
-    header = ft.Row([ft.Container(width=LABEL_WIDTH), *[day_header(d, today) for d in days]], spacing=CELL_SPACING)
+    """Une page du calendrier : la ligne des jours et une ligne de cases par nutriment (les noms et
+    moyennes sont dans la colonne fixe, à gauche). Hauteur fixe : voir table_height."""
+    header = ft.Row([day_header(d, today) for d in summary.days], spacing=CELL_SPACING)
     rows = [
         ft.Row(
             [
-                nutrient_label(n["label"], averages[n["key"]]),
-                *[
-                    rate_cell(
-                        rate_of(rates[d], n["key"]),
-                        future=d > today,
-                        on_click=lambda n=n, d=d: on_cell_click(n, d),
-                    )
-                    for d in days
-                ],
+                rate_cell(
+                    rate_of(summary.rates[d], n["key"]),
+                    future=d > today,
+                    on_click=lambda n=n, d=d: on_cell_click(n, d),
+                )
+                for d in summary.days
             ],
             spacing=CELL_SPACING,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
@@ -182,20 +178,14 @@ def week_table(
         for n in shown
     ]
     return ft.Column(
-        [
-            ft.Container(header, height=HEADER_HEIGHT),
-            *[ft.Container(row, height=ROW_HEIGHT) for row in rows],
-            ft.Container(
-                ft.Text(summary, color=ft.Colors.GREY_700), height=SUMMARY_HEIGHT, alignment=ft.Alignment.CENTER_LEFT
-            ),
-        ],
+        [ft.Container(header, height=HEADER_HEIGHT), *[ft.Container(row, height=ROW_HEIGHT) for row in rows]],
         spacing=CELL_SPACING,
     )
 
 
 def table_height(nutrient_count: int) -> int:
-    """Hauteur d'une page du calendrier (le PageView a besoin d'une hauteur fixe)."""
-    blocks = [HEADER_HEIGHT, *[ROW_HEIGHT] * nutrient_count, SUMMARY_HEIGHT]
+    """Hauteur du calendrier (le PageView a besoin d'une hauteur fixe)."""
+    blocks = [HEADER_HEIGHT, *[ROW_HEIGHT] * nutrient_count]
     return sum(blocks) + CELL_SPACING * (len(blocks) - 1)
 
 
@@ -217,10 +207,29 @@ def show_week(ctx: AppContext) -> None:
     # glissements) : les autres restent des cadres vides de la bonne hauteur, pour rester léger même
     # avec des mois d'historique.
     pages = [ft.Container(height=height) for _ in starts]
+    summaries: dict[int, WeekSummary] = {}  # calculées à la demande, une fois par semaine
+
+    def summary_of(index: int) -> WeekSummary:
+        if index not in summaries:
+            keys = [n["key"] for n in shown]
+            summaries[index] = week_summary(ctx.state["journal"], starts[index], ctx.foods, recommended, keys)
+        return summaries[index]
 
     def build(index: int) -> None:
         if 0 <= index < len(pages) and pages[index].content is None:
-            pages[index].content = week_table(starts[index], ctx, shown, recommended, today, open_detail)
+            pages[index].content = week_table(summary_of(index), shown, today, open_detail)
+
+    # Colonne fixe de gauche : les noms ne bougent pas, les moyennes suivent la semaine affichée.
+    average_texts = {n["key"]: ft.Text(size=11) for n in shown}
+    labels = ft.Column(
+        [
+            ft.Container(height=HEADER_HEIGHT),  # en face de la ligne des jours
+            *[nutrient_label(n["label"], average_texts[n["key"]]) for n in shown],
+        ],
+        spacing=CELL_SPACING,
+        width=LABEL_WIDTH,
+    )
+    week_info = ft.Text(color=ft.Colors.GREY_700)  # « 4 jours notés sur 7 »
 
     subtitle = ft.Text(color=ft.Colors.GREY_700)
     previous_button = ft.IconButton(ft.Icons.CHEVRON_LEFT, tooltip="Semaine précédente")
@@ -230,7 +239,11 @@ def show_week(ctx: AppContext) -> None:
         """Après un glissement (ou une flèche) : prépare les semaines voisines et met l'en-tête à jour."""
         for i in (index - 1, index, index + 1):
             build(i)
+        summary = summary_of(index)
         subtitle.value = week_label(starts[index])
+        for key, text in average_texts.items():
+            set_average(text, summary.averages[key])
+        week_info.value = summary_text(summary, shown)
         previous_button.disabled = index == 0
         next_button.disabled = index == len(starts) - 1  # pas de semaine future
         ctx.page.update()
@@ -267,7 +280,13 @@ def show_week(ctx: AppContext) -> None:
                 "fais glisser le tableau vers la droite pour remonter dans le temps.",
                 color=ft.Colors.GREY_700,
             ),
-            mouse_draggable(calendar),
+            # Seuls les jours et les cases glissent ; la colonne des nutriments reste en place.
+            ft.Row(
+                [labels, ft.Container(mouse_draggable(calendar), expand=True)],
+                spacing=CELL_SPACING,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+            ),
+            week_info,
             ft.Divider(height=16),
             legend(),
         ],

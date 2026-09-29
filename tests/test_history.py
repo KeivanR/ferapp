@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from history import average_rates, day_rates, rates_by_day, week_days, week_start
+from history import average_rates, day_rates, rates_by_day, week_days, week_start, week_summary
 from nutrition import ALL_KEYS, load_foods
 
 FOODS = load_foods(Path(__file__).parent / "foods_demo.csv")
@@ -59,3 +59,13 @@ def test_browsable_weeks_from_first_noted_week_to_current():
     assert all((b - a).days == 7 for a, b in zip(weeks, weeks[1:]))
     assert browsable_weeks({}, today) == [datetime.date(2026, 9, 28)]  # rien noté : la semaine en cours
     assert len(browsable_weeks({}, today, min_weeks=4)) == 4
+
+
+def test_week_summary_gathers_rates_averages_and_filled_days():
+    journal = {MONDAY.isoformat(): [{"food": "lentilles cuites", "grams": 100}]}  # fer 33 %
+    summary = week_summary(journal, MONDAY, FOODS, RECOMMENDED, ["fer"])
+    assert summary.days == week_days(MONDAY)
+    assert summary.filled_days == 1
+    assert summary.rates[MONDAY]["fer"] == pytest.approx(0.33)
+    assert summary.rates[MONDAY + datetime.timedelta(days=1)] is None
+    assert summary.averages == {"fer": pytest.approx(0.33)}

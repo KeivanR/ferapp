@@ -7,6 +7,7 @@ storage.load_state : {"AAAA-MM-JJ": [{"food": nom, "grams": g}, ...]}.
 from __future__ import annotations
 
 import datetime
+from dataclasses import dataclass
 
 from nutrition import completion, daily_totals
 
@@ -52,6 +53,35 @@ def average_rates(rates: dict[datetime.date, dict[str, float] | None], keys: lis
     a été noté (un jour oublié ne fait pas baisser la moyenne) ; None si aucun jour n'en a."""
     filled = [r for r in rates.values() if r is not None]
     return {k: (sum(r[k] for r in filled) / len(filled) if filled else None) for k in keys}
+
+
+@dataclass
+class WeekSummary:
+    """Tout ce qu'affiche une semaine de la page « Semaine »."""
+
+    days: list[datetime.date]  # du lundi au dimanche
+    rates: dict[datetime.date, dict[str, float] | None]  # day_rates de chaque jour
+    averages: dict[str, float | None]  # average_rates de la semaine
+    filled_days: int  # jours où quelque chose a été noté
+
+
+def week_summary(
+    journal: dict[str, list[dict]],
+    start: datetime.date,
+    foods: dict[str, dict],
+    recommended: dict[str, float],
+    keys: list[str],
+) -> WeekSummary:
+    """Taux jour par jour, moyennes (nutriments de `keys`) et nombre de jours notés de la semaine
+    qui commence le lundi `start`."""
+    days = week_days(start)
+    rates = rates_by_day(journal, days, foods, recommended)
+    return WeekSummary(
+        days=days,
+        rates=rates,
+        averages=average_rates(rates, keys),
+        filled_days=sum(r is not None for r in rates.values()),
+    )
 
 
 def browsable_weeks(journal: dict[str, list[dict]], today: datetime.date, min_weeks: int = 1) -> list[datetime.date]:
