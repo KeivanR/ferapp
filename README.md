@@ -40,9 +40,11 @@ ruff check . && ruff format . # vérifie le code et le remet en forme (pip insta
   visible) et en bas ; il ramène à la fiche. Sans réponse (nouveau profil), la situation proposée est « réglée »
   entre 12 et 50 ans (réglable dans `config.toml`), « non réglée » sinon.
 - **Cercles de complétion** : juste sous le titre, un cercle par nutriment suivi (orange, vert avec une coche une
-  fois l'apport recommandé atteint), dans une grille centrée qui passe à la ligne selon la largeur de l'écran.
-  Leur taille dépend du nombre de nutriments suivis (`ring_size_max` dans `config.toml`) : un seul nutriment suivi
-  -> un très grand cercle, beaucoup de nutriments -> des cercles plus petits (jusqu'au minimum `ring_size`).
+  fois l'apport recommandé atteint). Jusqu'à 6 nutriments suivis, ils forment une grille centrée ; au-delà, ils
+  restent sur 2 lignes (`ring_rows_max`) et on fait glisser la bande vers la gauche pour voir les autres — les
+  premiers de la liste sont toujours visibles, et le repas du jour reste à l'écran. Leur taille dépend du nombre de
+  nutriments suivis : un seul -> un très grand cercle (`ring_size_max`), beaucoup -> des cercles plus petits
+  (jusqu'au minimum `ring_size`).
 - **Détail d'un nutriment** : toucher un cercle (ou une case de l'onglet Semaine) l'ouvre en grand, par-dessus la page floutée. Sa barre de
   progression y est découpée en segments de couleur, un par aliment du jour, proportionnels à ce que chacun
   apporte ; la liste en dessous donne pour chaque couleur l'aliment, la quantité apportée et la part de l'apport
@@ -87,7 +89,7 @@ Tout ce qui se règle sans toucher au code est dans `config/` : `config.toml` (t
 | --- | --- |
 | `[app]` | titre, phrase d'accroche et durée de la page de démarrage, fichier d'aliments (`foods.csv`), nombre de suggestions affichées |
 | `[profile]` | âge par défaut, âges min/max acceptés, tranche d'âge où « règles » est coché par défaut |
-| `[display]` | taille et épaisseur des cercles, couleurs (en cours / atteint / aliment perso), seuil « apport bas » de l'onglet Semaine (`low_threshold`, en %, et `color_low`), couleurs des aliments dans le détail d'un cercle (`chart_colors`, `chart_color_other`) |
+| `[display]` | taille et épaisseur des cercles, nombre maximal de lignes de cercles (`ring_rows_max`), couleurs (en cours / atteint / aliment perso), seuil « apport bas » de l'onglet Semaine (`low_threshold`, en %, et `color_low`), couleurs des aliments dans le détail d'un cercle (`chart_colors`, `chart_color_other`) |
 | `[foods_build]` | réglages de `build_foods.py` : groupe requis, traitement de `< x` et de `traces` |
 | `[nutrients.<clé>]` | un bloc par nutriment : nom, unité, groupe, colonne du CSV, colonnes Ciqual, **apports de référence** |
 

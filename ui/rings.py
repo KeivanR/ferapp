@@ -1,8 +1,10 @@
 """Cercles de complétion de l'onglet Accueil.
 
-- nutrient_ring / rings_grid : un petit cercle par nutriment suivi, dans une grille qui passe à la
-  ligne toute seule selon la largeur de l'écran (jamais de cercle coupé à droite). Toucher un
-  cercle appelle `on_click(nutriment)` : l'accueil ouvre alors le détail (ui/nutrient_detail.py).
+- nutrient_ring / rings_grid : un petit cercle par nutriment suivi. Peu de nutriments : une grille
+  centrée qui passe à la ligne selon la largeur de l'écran. Beaucoup (plus que RINGS_PER_ROW x
+  ring_rows_max) : une bande de ring_rows_max lignes qui défile horizontalement, pour que les
+  cercles ne repoussent pas le repas du jour hors de l'écran. Toucher un cercle appelle
+  `on_click(nutriment)` : l'accueil ouvre alors le détail (ui/nutrient_detail.py).
 - segmented_ring : un grand cercle dont la barre de progression est découpée en segments de
   couleur (un par aliment), utilisé par ce détail.
 
@@ -17,10 +19,12 @@ from typing import Callable
 import flet as ft
 import flet.canvas as cv
 
-from .style import COLOR_DONE, COLOR_TODO, RING_SIZE, RING_SIZE_MAX, RING_STROKE
+from .style import COLOR_DONE, COLOR_TODO, RING_ROWS_MAX, RING_SIZE, RING_SIZE_MAX, RING_STROKE
 from .widgets import fmt
 
-GRID_SPACING = 12  # espace entre deux cercles, horizontalement et verticalement
+GRID_SPACING = 8  # espace entre deux cercles, horizontalement et verticalement
+STRIP_ROW_SPACING = 4  # espace entre les lignes de la bande qui défile (plus serrée que la grille)
+RINGS_PER_ROW = 3  # cercles par ligne sur un téléphone : sert à choisir entre grille et bande
 MIN_RING_WIDTH = 120  # largeur minimale d'une case : « Vitamine B12 » tient sur une ligne, et 3 cases par ligne
 LABEL_SIZE = 16  # nom du nutriment sous le cercle
 AMOUNT_SIZE = 13  # quantité du jour / apport recommandé
@@ -110,24 +114,52 @@ def rings_grid(
     recommended: dict[str, float],
     on_click: Callable[[dict], None] | None = None,
 ) -> ft.Control:
-    """La grille des cercles, centrée.
-
-    Le Row(wrap=True) est placé dans un Container aligné (et non dans un autre Row) : il reçoit
-    ainsi la largeur de l'écran comme limite et passe à la ligne au lieu de déborder à droite.
-    """
+    """Les cercles de l'accueil : grille centrée s'ils tiennent sur RING_ROWS_MAX lignes, sinon bande
+    qui défile horizontalement (rings_strip)."""
     size = ring_size_for(len(nutrients))
+    rings = [
+        nutrient_ring(n, ratios[n["key"]], totals[n["key"]], recommended[n["key"]], size, on_click) for n in nutrients
+    ]
+    if len(rings) > RINGS_PER_ROW * RING_ROWS_MAX:
+        return rings_strip(rings, RING_ROWS_MAX)
+    # Le Row(wrap=True) est placé dans un Container aligné (et non dans un autre Row) : il reçoit
+    # ainsi la largeur de l'écran comme limite et passe à la ligne au lieu de déborder à droite.
     return ft.Container(
         ft.Row(
-            [
-                nutrient_ring(n, ratios[n["key"]], totals[n["key"]], recommended[n["key"]], size, on_click)
-                for n in nutrients
-            ],
+            rings,
             wrap=True,
             alignment=ft.MainAxisAlignment.CENTER,
             spacing=GRID_SPACING,
             run_spacing=GRID_SPACING,
         ),
         alignment=ft.Alignment.TOP_CENTER,
+    )
+
+
+def rings_strip(rings: list[ft.Control], rows: int) -> ft.Control:
+    """Bande de `rows` lignes qui défile horizontalement. Les cercles sont rangés colonne par
+    colonne (1 et 2 dans la première colonne, 3 et 4 dans la deuxième...) : les premiers
+    nutriments de la liste sont donc tous visibles sans faire défiler. La colonne coupée au bord
+    droit, et une ligne d'aide dessous, montrent qu'il y en a d'autres."""
+    columns = [ft.Column(rings[i : i + rows], spacing=STRIP_ROW_SPACING) for i in range(0, len(rings), rows)]
+    return ft.Column(
+        [
+            ft.Row(
+                columns,
+                scroll=ft.ScrollMode.AUTO,
+                spacing=GRID_SPACING,
+                vertical_alignment=ft.CrossAxisAlignment.START,
+            ),
+            ft.Row(
+                [
+                    ft.Text("Fais glisser pour voir tous les nutriments", size=12, color=ft.Colors.GREY_600),
+                    ft.Icon(ft.Icons.SWIPE_LEFT_OUTLINED, size=16, color=ft.Colors.GREY_600),
+                ],
+                alignment=ft.MainAxisAlignment.END,
+                spacing=4,
+            ),
+        ],
+        spacing=2,
     )
 
 

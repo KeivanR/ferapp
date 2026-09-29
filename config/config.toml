@@ -29,9 +29,13 @@ menstruation_age_range = [12, 50]
 [display]
 # Diamètre des cercles de complétion (pixels) : ring_size quand beaucoup de nutriments sont
 # suivis, jusqu'à ring_size_max quand il n'y en a qu'un seul (voir ui/rings.py).
-ring_size = 88
+ring_size = 72
 ring_size_max = 200
 ring_stroke_width = 9
+# Nombre maximal de lignes de cercles sur l'accueil : s'il y a plus de nutriments suivis que ce qui
+# tient (3 par ligne sur un téléphone), les cercles restent sur ring_rows_max lignes et on fait
+# glisser la bande vers la gauche pour voir les autres. Ainsi, le repas du jour reste visible.
+ring_rows_max = 2
 # Cercles de l'accueil : color_todo tant que l'apport recommandé n'est pas atteint, color_done ensuite.
 # Cases de l'onglet Semaine : color_low sous low_threshold %, color_todo ensuite, color_done à 100 %.
 low_threshold = 50

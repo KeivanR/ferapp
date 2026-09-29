@@ -42,9 +42,10 @@ PROFILE_DEFAULTS = {
     "menstruation_age_range": [12, 50],
 }
 DISPLAY_DEFAULTS = {
-    "ring_size": 88,  # taille des cercles quand beaucoup de nutriments sont suivis
+    "ring_size": 72,  # taille des cercles quand beaucoup de nutriments sont suivis
     "ring_size_max": 200,  # taille quand un seul nutriment est suivi (voir ui/rings.py)
     "ring_stroke_width": 9,
+    "ring_rows_max": 2,  # au-delà, les cercles défilent horizontalement (voir ui/rings.py)
     "low_threshold": 50,  # en %, sous ce taux l'apport est affiché comme bas (color_low)
     "color_low": "#E53935",
     "color_todo": "#FB8C00",
@@ -153,6 +154,7 @@ def load_config(path: str | Path | None = None) -> dict:
     _number(display["ring_size"], "[display] ring_size", minimum=20)
     _number(display["ring_size_max"], "[display] ring_size_max", minimum=display["ring_size"])
     _number(display["ring_stroke_width"], "[display] ring_stroke_width", minimum=1)
+    _number(display["ring_rows_max"], "[display] ring_rows_max", minimum=1)
     _number(display["low_threshold"], "[display] low_threshold", minimum=0)
     colors = display["chart_colors"]
     if not isinstance(colors, list) or not colors or not all(isinstance(c, str) and c.startswith("#") for c in colors):

@@ -16,6 +16,7 @@ LOW_THRESHOLD = CONFIG["display"]["low_threshold"] / 100  # en fraction de l'app
 RING_SIZE = CONFIG["display"]["ring_size"]  # beaucoup de nutriments suivis
 RING_SIZE_MAX = CONFIG["display"]["ring_size_max"]  # un seul nutriment suivi
 RING_STROKE = CONFIG["display"]["ring_stroke_width"]
+RING_ROWS_MAX = CONFIG["display"]["ring_rows_max"]  # au-delà, bande qui défile horizontalement
 CHART_COLORS: list[str] = CONFIG["display"]["chart_colors"]  # une par aliment dans le détail d'un cercle
 CHART_COLOR_OTHER = CONFIG["display"]["chart_color_other"]  # regroupement « Autres aliments »
 

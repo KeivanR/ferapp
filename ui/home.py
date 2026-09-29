@@ -176,9 +176,9 @@ def show_main(ctx: AppContext) -> None:
                         ft.Icons.PERSON_OUTLINE, tooltip="Mon profil", on_click=lambda e: ctx.router.show_profile()
                     ),
                 ),
-                ft.Container(height=16),
+                ft.Container(height=8),
                 rings_holder,
-                ft.Container(height=16),
+                ft.Container(height=8),
                 ft.Row([food_field]),
                 suggestions_col,
                 quantity_row,
