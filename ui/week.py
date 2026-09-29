@@ -1,6 +1,7 @@
 """Onglet « Semaine » : taux de complétion de chaque nutriment suivi, jour par jour, du lundi
 au dimanche, avec la moyenne de la semaine. Les flèches du haut passent aux semaines
-précédentes / suivantes. Toucher une case remplie ouvre le détail du nutriment pour ce jour-là
+précédentes / suivantes ; on peut aussi faire glisser le tableau (vers la droite = semaine
+précédente), comme un calendrier. Toucher une case remplie ouvre le détail du nutriment pour ce jour-là
 (ui/nutrient_detail.py), comme un cercle de l'accueil.
 
 Les calculs sont dans history.py ; ce fichier ne fait que les afficher.
@@ -20,6 +21,7 @@ from .context import AppContext
 from .layout import screen_title, show_screen
 from .nutrient_detail import show_nutrient_detail
 from .style import COLOR_DONE, LOW_THRESHOLD, level_color
+from .widgets import swipeable
 
 DAY_LETTERS = ["L", "M", "M", "J", "V", "S", "D"]
 DAY_NAMES = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
@@ -149,7 +151,10 @@ def show_week(ctx: AppContext) -> None:
         show_nutrient_detail(ctx, nutrient, entries, recommended[nutrient["key"]], day_label=label)
 
     def change_week(weeks: int) -> None:
-        displayed["start"] += datetime.timedelta(weeks=weeks)
+        new_start = displayed["start"] + datetime.timedelta(weeks=weeks)
+        if new_start > week_start(today):
+            return  # pas de semaine future
+        displayed["start"] = new_start
         render()
 
     def render() -> None:
@@ -207,10 +212,11 @@ def show_week(ctx: AppContext) -> None:
             screen_title("Semaine", week_label(start), trailing=arrows),
             ft.Text(
                 "Part de l'apport recommandé atteinte chaque jour, pour chaque nutriment suivi. "
-                "Touche une case pour voir ce que chaque aliment a apporté.",
+                "Touche une case pour voir ce que chaque aliment a apporté, "
+                "fais glisser le tableau vers la droite pour remonter dans le temps.",
                 color=ft.Colors.GREY_700,
             ),
-            table,
+            swipeable(table, on_previous=lambda: change_week(-1), on_next=lambda: change_week(1)),
             ft.Text(summary, color=ft.Colors.GREY_700),
             ft.Divider(height=16),
             legend(),

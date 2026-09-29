@@ -7,6 +7,8 @@ Utilisé par ui/home.py (ajout du jour, modification d'une entrée) et ui/custom
 
 from __future__ import annotations
 
+from typing import Callable
+
 import flet as ft
 
 from nutrition import GRAMS_UNIT, find_food, normalize, parse_grams, search_foods
@@ -308,3 +310,46 @@ def validate_with_quantity(ctx: AppContext, food_input: ft.TextField, quantity: 
         ctx.page.update()
         return None
     return food, grams
+
+
+SWIPE_MIN_DISTANCE = 50  # px : un glissement plus court est ignoré (évite les faux départs)
+SWIPE_MIN_SPEED = 300  # px/s : un glissement rapide compte même s'il est court
+WHEEL_STEP = 120  # défilement horizontal (pavé tactile, molette + Maj) nécessaire pour un pas
+
+
+def swipeable(content: ft.Control, on_previous: Callable[[], None], on_next: Callable[[], None]) -> ft.Control:
+    """Rend `content` « glissable » horizontalement, comme un calendrier : glisser vers la droite
+    appelle on_previous (on revient en arrière), vers la gauche on_next. Sur ordinateur, le
+    défilement horizontal du pavé tactile (ou Maj + molette) fait de même. Les touchers simples
+    (cases cliquables) et le défilement vertical de la page ne sont pas gênés."""
+    drag = {"distance": 0.0}
+    wheel = {"total": 0.0}
+
+    def on_drag_start(e) -> None:
+        drag["distance"] = 0.0
+
+    def on_drag_update(e) -> None:
+        drag["distance"] += e.primary_delta or 0.0
+
+    def on_drag_end(e) -> None:
+        distance, speed = drag["distance"], e.primary_velocity or 0.0
+        if abs(distance) < SWIPE_MIN_DISTANCE and abs(speed) < SWIPE_MIN_SPEED:
+            return
+        (on_previous if (distance or speed) > 0 else on_next)()
+
+    def on_scroll(e) -> None:
+        dx = e.scroll_delta.x if e.scroll_delta else 0.0
+        if not dx:
+            return  # défilement vertical : laissé à la page
+        wheel["total"] += dx
+        if abs(wheel["total"]) >= WHEEL_STEP:
+            (on_next if wheel["total"] > 0 else on_previous)()
+            wheel["total"] = 0.0
+
+    return ft.GestureDetector(
+        content=content,
+        on_horizontal_drag_start=on_drag_start,
+        on_horizontal_drag_update=on_drag_update,
+        on_horizontal_drag_end=on_drag_end,
+        on_scroll=on_scroll,
+    )
