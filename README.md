@@ -26,14 +26,20 @@ ruff check . && ruff format . # vérifie le code et le remet en forme (pip insta
   - premier lancement, aucun profil enregistré -> un écran de bienvenue invite à créer son profil avant de
     proposer quoi que ce soit d'autre (bouton « Remplir mon profil »).
 - **Barre du bas** : trois onglets, toujours accessibles une fois le profil créé :
-  - **Accueil** : la page du jour (cercles, saisie des repas, repas du jour) ;
+  - **Accueil** : la page du jour (cercles, saisie des repas, repas du jour). Sous le titre, les flèches ‹ ›
+    passent à la veille / au lendemain, et toucher la date ouvre un calendrier pour aller à n'importe quel jour
+    passé (jusqu'à 5 ans, pas dans le futur) : on y ajoute, corrige ou supprime les repas exactement comme
+    aujourd'hui, et « Aujourd'hui » ramène au jour même. L'onglet Accueil de la barre du bas rouvre toujours
+    aujourd'hui ; le profil et « Ajouter un aliment » ramènent au jour qu'on était en train de modifier ;
   - **Semaine** : un tableau des nutriments suivis (lignes) jour par jour du lundi au dimanche (colonnes). Chaque
     case donne la part de l'apport recommandé atteinte ce jour-là (coche verte = atteint, « – » = rien noté) et
     chaque ligne sa moyenne sur les jours notés. Pour revoir les semaines passées, fais glisser le tableau vers la
     droite (vers la gauche pour revenir), au doigt, à la souris ou au pavé tactile : le tableau suit le geste
     puis se cale sur une semaine entière, du lundi au dimanche (seuls les jours et les cases glissent, la colonne
     des nutriments reste en place). Les flèches en haut font le même glissement.
-    Toucher une case remplie ouvre le détail du nutriment pour ce jour-là, comme un cercle de l'accueil ;
+    Toucher une case remplie ouvre le détail du nutriment pour ce jour-là, comme un cercle de l'accueil (avec un
+    bouton « Modifier les repas de ce jour ») ; toucher un jour (en-tête de colonne) ou une case vide « – » ouvre
+    l'accueil sur ce jour-là pour ajouter ou modifier ses repas ;
   - **Ressources** : des liens utiles (carence en fer, recommandations alimentaires, sources des données) et une
     FAQ dépliable, question par question. Tout ce contenu est dans `config/ressources.toml`.
 - **Profil** : l'icône en haut de la page principale ouvre une **fiche en lecture seule** (âge, sexe, situation,
@@ -132,6 +138,7 @@ nutrition_app/
 ├── main.py            point d'entrée (très court : délègue tout à ui/app.py)
 ├── config.py           lecture et validation stricte des fichiers de config/
 ├── nutrition.py         logique métier : profil, aliments, unités, calculs (testée, sans Flet)
+├── journal.py           journal des repas : lire, ajouter, modifier, supprimer, pour n'importe quel jour (testé)
 ├── history.py           calculs sur plusieurs jours pour l'onglet « Semaine » (testés, sans Flet)
 ├── storage.py            sauvegarde locale (JSON) du profil, du journal, des aliments perso
 ├── build_foods.py         convertit la table Ciqual .xlsx en foods.csv (à lancer à la main)
@@ -145,13 +152,16 @@ nutrition_app/
 ├── tests/                  tests automatiques (lancer « pytest » depuis la racine)
 │   ├── test_nutrition.py     tests de nutrition.py et build_foods.py
 │   ├── test_config.py        tests de config.py
+│   ├── test_journal.py       tests de journal.py
 │   ├── test_history.py       tests de history.py
+│   ├── test_dates.py         tests de ui/dates.py
 │   ├── test_navigation.py    cohérence des onglets de la barre du bas
 │   └── foods_demo.csv        mini-base utilisée par les tests
 └── ui/                          interface graphique (Flet) : un fichier par écran
     ├── app.py                     assemble l'app (charge les données, relie les écrans)
     ├── context.py                   état partagé (AppContext) et routeur entre écrans
     ├── style.py                      couleurs et tailles (lues depuis config.toml)
+    ├── dates.py                      dates en français (« Hier », « Mardi 23 septembre », semaines...)
     ├── layout.py                     show_screen() : affiche un écran (barres du haut et du bas, marges) ;
     │                                  show_popup() : une carte par-dessus la page floutée
     ├── navigation.py                 barre du bas : la liste des onglets (TABS)
@@ -162,14 +172,14 @@ nutrition_app/
     ├── profile_view.py                  fiche du profil (lecture seule)
     ├── profile_edit.py                   formulaire du profil
     ├── custom_food.py                     écran « Ajouter un aliment »
-    ├── home.py                             onglet Accueil (saisie, cercles, journal)
+    ├── home.py                             onglet Accueil (saisie, cercles, repas) pour n'importe quel jour
     ├── rings.py                            cercles de l'accueil (grille, grand cercle à segments)
     ├── nutrient_detail.py                  détail d'un nutriment pour un jour (cercle agrandi, part de chaque aliment)
     ├── week.py                             onglet Semaine (taux jour par jour)
     └── resources.py                        onglet Ressources (liens, FAQ)
 ```
 
-Deux couches bien séparées : `nutrition.py` et `history.py` (+ `config.py`, `storage.py`, `build_foods.py`)
+Deux couches bien séparées : `nutrition.py`, `journal.py` et `history.py` (+ `config.py`, `storage.py`, `build_foods.py`)
 portent toute la logique et ne dépendent pas de Flet — c'est ce que testent les fichiers de `tests/`. `ui/` ne fait
 que l'afficher : chaque écran est une fonction `show_xxx(ctx)` dans son propre fichier, qui construit son contenu
 puis l'affiche avec `show_screen(ctx, contenu, ...)` (`ui/layout.py`). Aucun écran ne connaît un
@@ -197,6 +207,7 @@ une ligne dans `TABS` (`ui/navigation.py`) : clé, libellé, icônes, et nom de 
 | `main.py` | Point d'entrée Flet (délègue à `ui/app.py`) |
 | `ui/` | Interface : un fichier par écran, voir l'arborescence ci-dessus |
 | `nutrition.py` | Logique : chargement du CSV, apports de référence, calculs |
+| `journal.py` | Journal des repas : entrées d'un jour, ajout, modification, suppression (n'importe quel jour) |
 | `history.py` | Logique sur plusieurs jours : semaines, taux par jour, moyennes (onglet « Semaine ») |
 | `config/ressources.toml` | **Contenu de l'onglet Ressources** : liens utiles et FAQ (à éditer à la main) |
 | `foods.csv` | Base Ciqual convertie (valeurs pour 100 g), générée par `build_foods.py` |
@@ -205,7 +216,9 @@ une ligne dans `TABS` (`ui/navigation.py`) : clé, libellé, icônes, et nom de 
 | `storage.py` | Sauvegarde du profil, du journal, des aliments personnalisés et des unités familières (JSON local) |
 | `tests/test_nutrition.py` | Tests unitaires de la logique |
 | `tests/test_config.py` | Tests de la validation des fichiers de `config/` |
+| `tests/test_journal.py` | Tests de la modification du journal |
 | `tests/test_history.py` | Tests des calculs de l'onglet « Semaine » |
+| `tests/test_dates.py` | Tests des dates écrites en français (`ui/dates.py`) |
 | `tests/test_navigation.py` | Vérifie que chaque onglet de la barre du bas mène à un écran existant |
 | `.gitignore` | Ce que git doit ignorer : caches Python/pytest, `data/` (tes données perso quand tu lances l'app en local), sorties de `flet build`, table Ciqual `.xlsx`, archives `.zip` |
 

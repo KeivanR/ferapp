@@ -1,4 +1,9 @@
-"""Page principale : saisie du jour, cercles de complétion par nutriment, journal des repas."""
+"""Page principale : saisie des repas, cercles de complétion par nutriment, liste des repas.
+
+Elle affiche aujourd'hui par défaut, mais n'importe quel jour passé s'affiche et se modifie
+de la même façon : flèches ‹ › pour la veille / le lendemain, calendrier en touchant la date,
+ou toucher un jour dans l'onglet Semaine. On ne peut pas aller dans le futur.
+"""
 
 from __future__ import annotations
 
@@ -17,14 +22,61 @@ from nutrition import (
 )
 
 from .context import AppContext
+from .dates import day_title, meals_title, numeric_date, picked_date
 from .layout import screen_title, show_screen
 from .nutrient_detail import show_nutrient_detail
 from .rings import rings_grid
 from .widgets import QuantityInput, fmt, make_food_input, make_grams_input, validate, validate_with_quantity
 
+HISTORY_YEARS = 5  # le calendrier remonte jusqu'à 5 ans en arrière
 
-def show_main(ctx: AppContext) -> None:
+
+def day_bar(ctx: AppContext, day: datetime.date, today: datetime.date) -> ft.Control:
+    """‹ 23/09/2026 › [Aujourd'hui] : change le jour affiché. Toucher la date ouvre un calendrier
+    pour aller directement à n'importe quel jour passé."""
+
+    def go_to(new_day: datetime.date) -> None:
+        ctx.router.show_main(new_day)
+
+    def on_pick(e) -> None:
+        if picker.value:
+            go_to(picked_date(picker.value))
+
+    picker = ft.DatePicker(
+        value=day,
+        first_date=today.replace(year=today.year - HISTORY_YEARS),
+        last_date=today,
+        help_text="Choisis le jour à modifier",
+        on_change=on_pick,
+    )
+    one_day = datetime.timedelta(days=1)
+    return ft.Row(
+        [
+            ft.IconButton(ft.Icons.CHEVRON_LEFT, tooltip="Jour précédent", on_click=lambda e: go_to(day - one_day)),
+            ft.TextButton(
+                numeric_date(day),
+                icon=ft.Icons.CALENDAR_MONTH_OUTLINED,
+                tooltip="Choisir un jour",
+                on_click=lambda e: ctx.page.show_dialog(picker),
+            ),
+            ft.IconButton(
+                ft.Icons.CHEVRON_RIGHT,
+                tooltip="Jour suivant",
+                disabled=day >= today,
+                on_click=lambda e: go_to(day + one_day),
+            ),
+            ft.TextButton("Aujourd'hui", icon=ft.Icons.TODAY, visible=day != today, on_click=lambda e: go_to(today)),
+        ],
+        spacing=0,
+    )
+
+
+def show_main(ctx: AppContext, day: datetime.date | None = None) -> None:
+    """`day` : jour à afficher et modifier ; None = aujourd'hui."""
     page = ctx.page
+    today = datetime.date.today()
+    day = min(day or today, today)  # pas de jour futur
+    ctx.home_day = None if day == today else day  # pour y revenir depuis le profil, etc.
     profile = ctx.get_profile()
     recommended = recommended_intakes(profile)
     shown = selected_nutrients(profile)
@@ -68,15 +120,19 @@ def show_main(ctx: AppContext) -> None:
 
     def open_nutrient_detail(nutrient: dict) -> None:
         """Toucher un cercle : il s'ouvre en grand, avec la part de chaque aliment du jour."""
-        show_nutrient_detail(ctx, nutrient, ctx.entries_today(), recommended[nutrient["key"]])
+        label = None if day == today else day_title(day, today)
+        show_nutrient_detail(ctx, nutrient, ctx.entries_for(day), recommended[nutrient["key"]], day_label=label)
 
     def refresh():
-        entries = ctx.entries_today()
+        entries = ctx.entries_for(day)
         totals = daily_totals(entries, ctx.foods)
         ratios = completion(totals, recommended)
         rings_holder.content = rings_grid(shown, ratios, totals, recommended, on_click=open_nutrient_detail)
         entries_col.controls = [build_entry_tile(i, e) for i, e in enumerate(entries)] or [
-            ft.Text("Rien d'ajouté pour l'instant.", color=ft.Colors.GREY_600)
+            ft.Text(
+                "Rien d'ajouté pour l'instant." if day == today else "Rien de noté ce jour-là.",
+                color=ft.Colors.GREY_600,
+            )
         ]
         page.update()
 
@@ -106,16 +162,15 @@ def show_main(ctx: AppContext) -> None:
         )
 
     async def add_entry(e=None):
-        """Ajoute l'aliment saisi au journal du jour (déclenché par Entrée, pas de bouton)."""
+        """Ajoute l'aliment saisi au jour affiché (déclenché par Entrée, pas de bouton)."""
         if not (food_field.value or "").strip() and quantity.is_empty():
             return  # Entrée sur des champs vides : rien à faire, pas de message d'erreur
         checked = validate_with_quantity(ctx, food_field, quantity)
         if checked is None:
             return
         food, grams = checked
-        ctx.entries_today().append({"food": food["name"], "grams": grams})
         ctx.remember_unit(food["name"], quantity.unit_label)  # présélectionnée la prochaine fois
-        ctx.save()
+        ctx.add_entry(day, food["name"], grams)  # sauvegarde aussi l'unité retenue
         food_field.value = ""
         suggestions_col.controls = []
         quantity.reset()
@@ -124,15 +179,12 @@ def show_main(ctx: AppContext) -> None:
         await food_field.focus()  # prêt pour l'aliment suivant
 
     def delete_entry(index: int):
-        entries = ctx.entries_today()
-        if 0 <= index < len(entries):
-            entries.pop(index)
-            ctx.save()
-            refresh()
+        ctx.delete_entry(day, index)
+        refresh()
 
     def open_edit(index: int):
         """Fenêtre pour corriger l'aliment et/ou le grammage d'une entrée du jour."""
-        entries = ctx.entries_today()
+        entries = ctx.entries_for(day)
         if not 0 <= index < len(entries):
             return
         entry = entries[index]
@@ -147,8 +199,7 @@ def show_main(ctx: AppContext) -> None:
             if checked is None:
                 return
             food, grams = checked
-            entries[index] = {"food": food["name"], "grams": grams}
-            ctx.save()
+            ctx.replace_entry(day, index, food["name"], grams)
             page.pop_dialog()
             refresh()
 
@@ -170,8 +221,8 @@ def show_main(ctx: AppContext) -> None:
         ft.Column(
             [
                 screen_title(
-                    "Aujourd'hui",
-                    datetime.date.today().strftime("%d/%m/%Y"),
+                    day_title(day, today),
+                    day_bar(ctx, day, today),
                     trailing=ft.IconButton(
                         ft.Icons.PERSON_OUTLINE, tooltip="Mon profil", on_click=lambda e: ctx.router.show_profile()
                     ),
@@ -194,7 +245,7 @@ def show_main(ctx: AppContext) -> None:
                     ],
                 ),
                 ft.Divider(height=24),
-                ft.Text("Repas du jour", size=18, weight=ft.FontWeight.W_600),
+                ft.Text(meals_title(day, today), size=18, weight=ft.FontWeight.W_600),
                 entries_col,
             ],
             spacing=8,

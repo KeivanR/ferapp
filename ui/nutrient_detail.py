@@ -2,13 +2,16 @@
 même) ou une case de l'onglet Semaine (le jour de la colonne) : le cercle s'affiche en
 grand, par-dessus la page floutée, et sa barre de progression est découpée en segments de
 couleur, un par aliment du jour, proportionnels à ce que chacun apporte. La liste en dessous
-donne, pour chaque couleur, l'aliment et sa quantité.
+donne, pour chaque couleur, l'aliment et sa quantité. Depuis l'onglet Semaine, un bouton
+permet d'aller modifier les repas de ce jour-là.
 
 Les calculs viennent de nutrition.food_contributions ; les couleurs de config.toml ([display],
 chart_colors).
 """
 
 from __future__ import annotations
+
+from typing import Callable
 
 import flet as ft
 
@@ -24,10 +27,16 @@ BIG_RING_SIZE = 200
 
 
 def show_nutrient_detail(
-    ctx: AppContext, nutrient: dict, entries: list[dict], recommended: float, day_label: str | None = None
+    ctx: AppContext,
+    nutrient: dict,
+    entries: list[dict],
+    recommended: float,
+    day_label: str | None = None,
+    on_edit_day: Callable[[], None] | None = None,
 ) -> None:
     """`entries` : les entrées du journal de la journée ; `day_label` : la journée, affichée sous le
-    titre (ex. « mardi 23 septembre ») — rien pour aujourd'hui."""
+    titre (ex. « Mardi 23 septembre ») — rien pour aujourd'hui ; `on_edit_day` : si fourni, un
+    bouton « Modifier les repas de ce jour » l'appelle."""
     items = food_contributions(entries, ctx.foods, nutrient["key"], max_foods=len(CHART_COLORS))
     colors = [CHART_COLOR_OTHER if item["other"] else CHART_COLORS[i] for i, item in enumerate(items)]
     total = sum(item["amount"] for item in items)
@@ -75,6 +84,11 @@ def show_nutrient_detail(
         caption = None
 
     close = None  # défini juste après show_popup, utilisé par le bouton ×
+
+    def edit_day(e) -> None:
+        close()
+        on_edit_day()
+
     content = ft.Column(
         [
             ft.Row(
@@ -94,6 +108,16 @@ def show_nutrient_detail(
             ft.Container(height=4),
             *([ft.Text(caption, size=12, color=ft.Colors.GREY_700)] if caption else []),
             legend,
+            *(
+                [
+                    ft.Container(
+                        ft.TextButton("Modifier les repas de ce jour", icon=ft.Icons.EDIT_CALENDAR, on_click=edit_day),
+                        alignment=ft.Alignment.CENTER,
+                    )
+                ]
+                if on_edit_day
+                else []
+            ),
         ],
         spacing=10,
         tight=True,

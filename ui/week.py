@@ -5,7 +5,8 @@ précédente) : il suit le doigt, puis se cale sur une semaine entière, du lund
 (ft.PageView, un défilement natif). Seuls les jours et les cases glissent : la colonne des
 nutriments reste fixe à gauche, et ses moyennes se mettent à jour quand la semaine change.
 Toucher une case remplie ouvre le détail du nutriment pour ce jour-là (ui/nutrient_detail.py),
-comme un cercle de l'accueil.
+comme un cercle de l'accueil. Toucher un jour (en-tête de colonne) ou une case vide « – » ouvre
+l'accueil sur ce jour-là, pour ajouter ou modifier ses repas.
 
 Les calculs sont dans history.py ; ce fichier ne fait que les afficher.
 """
@@ -17,21 +18,16 @@ from typing import Callable
 
 import flet as ft
 
-from history import DAYS_PER_WEEK, WeekSummary, browsable_weeks, week_summary
+from history import WeekSummary, browsable_weeks, week_summary
 from nutrition import recommended_intakes, selected_nutrients
 
 from .context import AppContext
+from .dates import DAY_LETTERS, day_title, week_label
 from .layout import screen_title, show_screen
 from .nutrient_detail import show_nutrient_detail
 from .style import COLOR_DONE, LOW_THRESHOLD, level_color
 from .widgets import mouse_draggable
 
-DAY_LETTERS = ["L", "M", "M", "J", "V", "S", "D"]
-DAY_NAMES = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
-MONTHS = [
-    "janvier", "février", "mars", "avril", "mai", "juin",
-    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
-]  # fmt: skip
 LABEL_WIDTH = 100  # colonne des noms de nutriments ; les 7 colonnes de jours se partagent le reste
 CELL_HEIGHT = 34
 CELL_SPACING = 4
@@ -42,25 +38,6 @@ MIN_WEEKS = 4  # semaines consultables au minimum, même sans historique
 ARROW_ANIMATION_MS = 350  # glissement quand on utilise les flèches
 
 
-def week_label(start: datetime.date) -> str:
-    """« du 21 au 27 septembre 2026 », « du 29 septembre au 5 octobre 2026 »..."""
-    end = start + datetime.timedelta(days=DAYS_PER_WEEK - 1)
-    if start.year != end.year:
-        return f"du {start.day} {MONTHS[start.month - 1]} {start.year} au {end.day} {MONTHS[end.month - 1]} {end.year}"
-    if start.month != end.month:
-        return f"du {start.day} {MONTHS[start.month - 1]} au {end.day} {MONTHS[end.month - 1]} {end.year}"
-    return f"du {start.day} au {end.day} {MONTHS[end.month - 1]} {end.year}"
-
-
-def day_label(day: datetime.date, today: datetime.date) -> str:
-    """« aujourd'hui », « hier », sinon « mardi 23 septembre »."""
-    if day == today:
-        return "aujourd'hui"
-    if day == today - datetime.timedelta(days=1):
-        return "hier"
-    return f"{DAY_NAMES[day.weekday()]} {day.day} {MONTHS[day.month - 1]}"
-
-
 def rate_of(day_rates: dict[str, float] | None, key: str) -> float | None:
     return None if day_rates is None else day_rates[key]
 
@@ -69,8 +46,8 @@ def rate_cell(ratio: float | None, future: bool, on_click: Callable[[], None] | 
     """Une case du tableau : coche verte (apport atteint), sinon le pourcentage sur fond rouge (bas)
     ou orange (en cours), d'autant plus soutenu qu'on s'approche de 100 % ; « – » si rien n'a été
     noté, vide pour un jour à venir. Couleurs : ui/style.level_color. `on_click` : appelé quand on
-    touche la case (seulement pour un jour où quelque chose a été noté)."""
-    clickable = on_click is not None and ratio is not None and not future
+    touche la case (jamais pour un jour à venir)."""
+    clickable = on_click is not None and not future
     if future:
         content, bgcolor = None, None
     elif ratio is None:
@@ -92,7 +69,9 @@ def rate_cell(ratio: float | None, future: bool, on_click: Callable[[], None] | 
     )
 
 
-def day_header(day: datetime.date, today: datetime.date) -> ft.Control:
+def day_header(day: datetime.date, today: datetime.date, on_click: Callable[[], None] | None = None) -> ft.Control:
+    """En-tête d'une colonne (« M 29 »). `on_click` : appelé quand on le touche (sauf jour à venir)."""
+    clickable = on_click is not None and day <= today
     is_today = day == today
     color = ft.Colors.PRIMARY if is_today else ft.Colors.GREY_700
     weight = ft.FontWeight.BOLD if is_today else None
@@ -107,6 +86,10 @@ def day_header(day: datetime.date, today: datetime.date) -> ft.Control:
         ),
         expand=True,
         alignment=ft.Alignment.CENTER,
+        border_radius=8,
+        ink=clickable,
+        on_click=(lambda e: on_click()) if clickable else None,
+        tooltip="Modifier les repas de ce jour" if clickable else None,
     )
 
 
@@ -158,17 +141,26 @@ def week_table(
     shown: list[dict],
     today: datetime.date,
     on_cell_click: Callable[[dict, datetime.date], None],
+    on_day_click: Callable[[datetime.date], None],
 ) -> ft.Control:
     """Une page du calendrier : la ligne des jours et une ligne de cases par nutriment (les noms et
-    moyennes sont dans la colonne fixe, à gauche). Hauteur fixe : voir table_height."""
-    header = ft.Row([day_header(d, today) for d in summary.days], spacing=CELL_SPACING)
+    moyennes sont dans la colonne fixe, à gauche). Hauteur fixe : voir table_height.
+    `on_cell_click(nutriment, jour)` : case remplie touchée ; `on_day_click(jour)` : en-tête d'un
+    jour ou case vide touchée."""
+
+    def cell_action(nutrient: dict, day: datetime.date) -> Callable[[], None]:
+        if summary.rates[day] is None:  # rien de noté : on va directement noter ses repas
+            return lambda: on_day_click(day)
+        return lambda: on_cell_click(nutrient, day)
+
+    header = ft.Row([day_header(d, today, lambda d=d: on_day_click(d)) for d in summary.days], spacing=CELL_SPACING)
     rows = [
         ft.Row(
             [
                 rate_cell(
                     rate_of(summary.rates[d], n["key"]),
                     future=d > today,
-                    on_click=lambda n=n, d=d: on_cell_click(n, d),
+                    on_click=cell_action(n, d),
                 )
                 for d in summary.days
             ],
@@ -197,11 +189,21 @@ def show_week(ctx: AppContext) -> None:
     starts = browsable_weeks(ctx.state["journal"], today, min_weeks=MIN_WEEKS)  # plus ancienne -> en cours
     height = table_height(len(shown))
 
+    def open_day(day: datetime.date) -> None:
+        """Toucher un jour : l'accueil s'ouvre sur ce jour, pour ajouter ou modifier ses repas."""
+        ctx.router.show_main(day)
+
     def open_detail(nutrient: dict, day: datetime.date) -> None:
-        """Toucher une case : détail du nutriment ce jour-là, aliment par aliment."""
-        entries = ctx.state["journal"].get(day.isoformat(), [])
-        label = None if day == today else day_label(day, today)
-        show_nutrient_detail(ctx, nutrient, entries, recommended[nutrient["key"]], day_label=label)
+        """Toucher une case remplie : détail du nutriment ce jour-là, aliment par aliment."""
+        label = None if day == today else day_title(day, today)
+        show_nutrient_detail(
+            ctx,
+            nutrient,
+            ctx.entries_for(day),
+            recommended[nutrient["key"]],
+            day_label=label,
+            on_edit_day=lambda: open_day(day),
+        )
 
     # Une page par semaine. Seules la semaine affichée et ses voisines sont construites (au fil des
     # glissements) : les autres restent des cadres vides de la bonne hauteur, pour rester léger même
@@ -217,7 +219,7 @@ def show_week(ctx: AppContext) -> None:
 
     def build(index: int) -> None:
         if 0 <= index < len(pages) and pages[index].content is None:
-            pages[index].content = week_table(summary_of(index), shown, today, open_detail)
+            pages[index].content = week_table(summary_of(index), shown, today, open_detail, open_day)
 
     # Colonne fixe de gauche : les noms ne bougent pas, les moyennes suivent la semaine affichée.
     average_texts = {n["key"]: ft.Text(size=11) for n in shown}
@@ -276,8 +278,8 @@ def show_week(ctx: AppContext) -> None:
             screen_title("Semaine", subtitle, trailing=ft.Row([previous_button, next_button], spacing=0)),
             ft.Text(
                 "Part de l'apport recommandé atteinte chaque jour, pour chaque nutriment suivi. "
-                "Touche une case pour voir ce que chaque aliment a apporté, "
-                "fais glisser le tableau vers la droite pour remonter dans le temps.",
+                "Touche une case pour voir ce que chaque aliment a apporté, un jour pour modifier ses repas, "
+                "et fais glisser le tableau vers la droite pour remonter dans le temps.",
                 color=ft.Colors.GREY_700,
             ),
             # Seuls les jours et les cases glissent ; la colonne des nutriments reste en place.

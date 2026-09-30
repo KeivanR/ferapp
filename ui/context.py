@@ -14,6 +14,7 @@ from typing import Callable, Optional
 
 import flet as ft
 
+import journal
 from nutrition import Profile, merge_foods, preferred_unit, units_for_food
 from nutrition import add_food_unit as _add_food_unit
 from nutrition import remember_unit as _remember_unit
@@ -33,7 +34,8 @@ class Router:
     show_profile: Optional[Callable[[], None]] = None
     show_profile_edit: Optional[Callable[[], None]] = None
     show_custom_food: Optional[Callable[[], None]] = None
-    show_main: Optional[Callable[[], None]] = None
+    # show_main(jour) : accueil sur ce jour ; show_main() : accueil sur aujourd'hui.
+    show_main: Optional[Callable[..., None]] = None
     show_week: Optional[Callable[[], None]] = None
     show_resources: Optional[Callable[[], None]] = None
 
@@ -49,16 +51,30 @@ class AppContext:
     foods: dict[str, dict]  # base officielle + aliments personnalisés (nutrition.merge_foods)
     official_foods: dict[str, dict] = field(default_factory=dict)  # pour recalculer `foods`
     router: Router = field(default_factory=Router)
+    # Dernier jour affiché par l'accueil : les sous-écrans (profil, ajout d'un aliment) y
+    # reviennent avec `ctx.router.show_main(ctx.home_day)`. None = aujourd'hui.
+    home_day: Optional[datetime.date] = None
 
     def get_profile(self) -> Profile:
         return Profile.from_dict(self.state["profile"])
 
-    def today_key(self) -> str:
-        return datetime.date.today().isoformat()
+    # --- Journal : n'importe quel jour, passé compris (logique dans journal.py) ---
 
-    def entries_today(self) -> list[dict]:
-        """Entrées du journal alimentaire d'aujourd'hui (liste modifiable en place)."""
-        return self.state["journal"].setdefault(self.today_key(), [])
+    def entries_for(self, day: datetime.date) -> list[dict]:
+        """Entrées du journal ce jour-là (à lire seulement : pour modifier, voir ci-dessous)."""
+        return journal.entries_for(self.state["journal"], day)
+
+    def add_entry(self, day: datetime.date, food: str, grams: float) -> None:
+        journal.add_entry(self.state["journal"], day, food, grams)
+        self.save()
+
+    def replace_entry(self, day: datetime.date, index: int, food: str, grams: float) -> None:
+        journal.replace_entry(self.state["journal"], day, index, food, grams)
+        self.save()
+
+    def delete_entry(self, day: datetime.date, index: int) -> None:
+        journal.delete_entry(self.state["journal"], day, index)
+        self.save()
 
     def save(self) -> None:
         """Écrit l'état (profil, journal, aliments personnalisés) sur disque."""
@@ -81,7 +97,7 @@ class AppContext:
 
     def remember_unit(self, food_name: str, label: str) -> None:
         """Retient la dernière unité utilisée pour cet aliment. Ne sauvegarde pas : c'est fait
-        avec l'entrée du journal qui l'accompagne (voir ui/home.add_entry)."""
+        avec l'entrée du journal qui l'accompagne (à appeler avant add_entry)."""
         _remember_unit(food_name, label, self.foods, self.state["last_units"])
 
     def add_food_unit(self, food_name: str, label: str, grams: float) -> dict:

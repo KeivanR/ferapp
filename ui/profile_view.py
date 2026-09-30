@@ -36,7 +36,9 @@ def show_profile(ctx: AppContext) -> None:
     appbar = ft.AppBar(
         title=ft.Text("Ton profil", weight=ft.FontWeight.BOLD),
         center_title=False,
-        leading=ft.IconButton(ft.Icons.ARROW_BACK, tooltip="Retour", on_click=lambda e: ctx.router.show_main()),
+        leading=ft.IconButton(
+            ft.Icons.ARROW_BACK, tooltip="Retour", on_click=lambda e: ctx.router.show_main(ctx.home_day)
+        ),
         actions=[
             ft.FilledButton("Modifier", icon=ft.Icons.EDIT, on_click=lambda e: ctx.router.show_profile_edit()),
             ft.Container(width=12),

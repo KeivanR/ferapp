@@ -221,7 +221,7 @@ def show_custom_food(ctx: AppContext) -> None:
                 # Garde-fou seulement : l'aliment est créé quoi qu'il arrive, l'unité pourra être
                 # ajoutée depuis l'écran principal (bouton « Nouvelle unité »).
                 pass
-        ctx.router.show_main()
+        ctx.router.show_main(ctx.home_day)
 
     show_screen(
         ctx,
@@ -229,7 +229,9 @@ def show_custom_food(ctx: AppContext) -> None:
             [
                 ft.Row(
                     [
-                        ft.IconButton(ft.Icons.ARROW_BACK, tooltip="Retour", on_click=lambda e: ctx.router.show_main()),
+                        ft.IconButton(
+                            ft.Icons.ARROW_BACK, tooltip="Retour", on_click=lambda e: ctx.router.show_main(ctx.home_day)
+                        ),
                         ft.Text("Ajouter un aliment", size=24, weight=ft.FontWeight.BOLD),
                     ]
                 ),
@@ -265,7 +267,7 @@ def show_custom_food(ctx: AppContext) -> None:
                 recipe_col,
                 ft.Row(
                     [
-                        ft.TextButton("Annuler", on_click=lambda e: ctx.router.show_main()),
+                        ft.TextButton("Annuler", on_click=lambda e: ctx.router.show_main(ctx.home_day)),
                         ft.FilledButton("Enregistrer l'aliment", on_click=save_custom),
                     ],
                     alignment=ft.MainAxisAlignment.END,

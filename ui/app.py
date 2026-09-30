@@ -42,6 +42,9 @@ def run(page: ft.Page) -> None:
     page.padding = 0
     page.scroll = ft.ScrollMode.AUTO
     page.theme_mode = ft.ThemeMode.LIGHT
+    # Textes intégrés de Flutter (calendrier, boutons Annuler/OK...) en français.
+    french = ft.Locale("fr", "FR")
+    page.locale_configuration = ft.LocaleConfiguration(supported_locales=[french], current_locale=french)
 
     state = load_state()
     ctx = AppContext(
@@ -57,7 +60,7 @@ def run(page: ft.Page) -> None:
     ctx.router.show_profile = lambda: show_profile(ctx)
     ctx.router.show_profile_edit = lambda: show_profile_edit(ctx)
     ctx.router.show_custom_food = lambda: show_custom_food(ctx)
-    ctx.router.show_main = lambda: show_main(ctx)
+    ctx.router.show_main = lambda day=None: show_main(ctx, day)
     ctx.router.show_week = lambda: show_week(ctx)
     ctx.router.show_resources = lambda: show_resources(ctx)
 
