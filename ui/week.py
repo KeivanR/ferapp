@@ -25,7 +25,7 @@ from .context import AppContext
 from .dates import DAY_LETTERS, day_title, week_label
 from .layout import screen_title, show_screen
 from .nutrient_detail import show_nutrient_detail
-from .style import COLOR_DONE, LOW_THRESHOLD, level_color
+from .style import COLOR_DONE, LOW_THRESHOLD, WEEK_ARROW_MS, WEEKS_MIN, level_color
 from .widgets import mouse_draggable
 
 LABEL_WIDTH = 100  # colonne des noms de nutriments ; les 7 colonnes de jours se partagent le reste
@@ -34,8 +34,6 @@ CELL_SPACING = 4
 HEADER_HEIGHT = 40  # ligne des jours
 ROW_HEIGHT = 38  # une ligne de nutriment (nom + moyenne)
 SUMMARY_HEIGHT = 24  # « 4 jours notés sur 7 »
-MIN_WEEKS = 4  # semaines consultables au minimum, même sans historique
-ARROW_ANIMATION_MS = 350  # glissement quand on utilise les flèches
 
 
 def rate_of(day_rates: dict[str, float] | None, key: str) -> float | None:
@@ -186,7 +184,7 @@ def show_week(ctx: AppContext) -> None:
     recommended = recommended_intakes(profile)
     shown = selected_nutrients(profile)
     today = datetime.date.today()
-    starts = browsable_weeks(ctx.state["journal"], today, min_weeks=MIN_WEEKS)  # plus ancienne -> en cours
+    starts = browsable_weeks(ctx.state["journal"], today, min_weeks=WEEKS_MIN)  # plus ancienne -> en cours
     height = table_height(len(shown))
 
     def open_day(day: datetime.date) -> None:
@@ -261,7 +259,7 @@ def show_week(ctx: AppContext) -> None:
         index = calendar.selected_index + delta
         if 0 <= index < len(starts):
             await calendar.go_to_page(
-                index, animation_duration=ARROW_ANIMATION_MS, animation_curve=ft.AnimationCurve.EASE_IN_OUT
+                index, animation_duration=WEEK_ARROW_MS, animation_curve=ft.AnimationCurve.EASE_IN_OUT
             )
 
     async def on_previous(e) -> None:

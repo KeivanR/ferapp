@@ -26,9 +26,8 @@ from .dates import day_title, meals_title, numeric_date, picked_date
 from .layout import screen_title, show_screen
 from .nutrient_detail import show_nutrient_detail
 from .rings import rings_grid
+from .style import HISTORY_YEARS
 from .widgets import QuantityInput, fmt, make_food_input, make_grams_input, validate, validate_with_quantity
-
-HISTORY_YEARS = 5  # le calendrier remonte jusqu'à 5 ans en arrière
 
 
 def day_bar(ctx: AppContext, day: datetime.date, today: datetime.date) -> ft.Control:

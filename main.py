@@ -9,6 +9,7 @@ Organisation du code (voir README.md pour le détail de chaque fichier) :
                              validés au démarrage)
   nutrition.py, history.py   logique métier : un jour, plusieurs jours (testées, sans Flet)
   journal.py                 journal des repas, modifiable pour n'importe quel jour (testé)
+  custom_foods.py            aliments perso : modifier, renommer partout, supprimer (testé)
   storage.py                 sauvegarde locale
   build_foods.py             génère foods.csv à partir de la table Ciqual (à lancer à la main)
   ui/                        interface graphique : un fichier par écran, voir ui/app.py ;

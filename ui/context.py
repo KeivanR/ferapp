@@ -14,10 +14,12 @@ from typing import Callable, Optional
 
 import flet as ft
 
+import custom_foods
 import journal
-from nutrition import Profile, merge_foods, preferred_unit, units_for_food
+from nutrition import Profile, merge_foods, normalize, preferred_unit, units_for_food
 from nutrition import add_food_unit as _add_food_unit
 from nutrition import remember_unit as _remember_unit
+from nutrition import remove_food_unit as _remove_food_unit
 from storage import save_state
 
 
@@ -33,10 +35,15 @@ class Router:
     show_welcome: Optional[Callable[[], None]] = None
     show_profile: Optional[Callable[[], None]] = None
     show_profile_edit: Optional[Callable[[], None]] = None
-    show_custom_food: Optional[Callable[[], None]] = None
+    # show_custom_food(name=None, back=None, on_saved=None) : crée un aliment perso (name=None) ou
+    # modifie celui qui s'appelle `name` ; `back()` ramène à l'écran précédent (Annuler, ←, et
+    # Enregistrer si `on_saved` n'est pas fourni) ; `on_saved(nom)` est appelé après Enregistrer.
+    show_custom_food: Optional[Callable[..., None]] = None
     # show_main(jour) : accueil sur ce jour ; show_main() : accueil sur aujourd'hui.
     show_main: Optional[Callable[..., None]] = None
     show_week: Optional[Callable[[], None]] = None
+    show_my_foods: Optional[Callable[[], None]] = None
+    show_food_detail: Optional[Callable[[str], None]] = None  # fiche de l'aliment perso de ce nom
     show_resources: Optional[Callable[[], None]] = None
 
 
@@ -80,9 +87,32 @@ class AppContext:
         """Écrit l'état (profil, journal, aliments personnalisés) sur disque."""
         save_state(self.state)
 
+    # --- Aliments personnalisés (logique dans custom_foods.py) ---
+    # Chaque modification sauvegarde, puis remet `foods` à jour (même dict, partagé par les écrans).
+
+    def custom_food(self, name: str) -> dict | None:
+        """L'aliment perso de ce nom, tel qu'enregistré (avec "kind", "ingredients"...), ou None."""
+        return custom_foods.find_custom(self.state["custom_foods"], name)
+
+    def food_usage(self, name: str) -> dict:
+        """{"meals": nombre de repas du journal, "recipes": [recettes qui l'utilisent]}."""
+        return custom_foods.food_usage(self.state, name)
+
     def add_custom_food(self, food: dict) -> None:
-        """Ajoute un aliment personnalisé, sauvegarde, et remet `foods` à jour."""
         self.state["custom_foods"].append(food)
+        self._foods_changed()
+
+    def update_custom_food(self, old_name: str, food: dict) -> None:
+        """Remplace / renomme un aliment perso (ValueError avec un message affichable si refusé)."""
+        custom_foods.update_custom_food(self.state, old_name, food, self.official_foods)
+        self._foods_changed()
+
+    def delete_custom_food(self, name: str) -> None:
+        """Supprime un aliment perso et ses repas (ValueError si une recette l'utilise encore)."""
+        custom_foods.delete_custom_food(self.state, name)
+        self._foods_changed()
+
+    def _foods_changed(self) -> None:
         self.save()
         self.foods.clear()
         self.foods.update(merge_foods(self.official_foods, self.state["custom_foods"]))
@@ -106,3 +136,13 @@ class AppContext:
         unit = _add_food_unit(food_name, label, grams, self.foods, self.state["food_units"])
         self.save()
         return unit
+
+    def remove_food_unit(self, food_name: str, label: str) -> None:
+        """Retire une unité ajoutée par l'utilisateur pour cet aliment, et sauvegarde."""
+        _remove_food_unit(food_name, label, self.foods, self.state["food_units"])
+        self.save()
+
+    def user_units(self, food_name: str) -> list[dict]:
+        """Unités ajoutées par l'utilisateur pour cet aliment (sans l'unité par défaut du CSV)."""
+        food = self.foods.get(normalize(food_name))
+        return list(self.state["food_units"].get(normalize(food["name"]), [])) if food else []

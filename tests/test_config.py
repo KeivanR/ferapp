@@ -103,6 +103,9 @@ def test_duplicate_csv_column_is_rejected(tmp_path):
         ("[display]\nring_size = 2\n", "ring_size"),
         ('[foods_build]\nrequired_group = "Inconnu"\n', "aucun groupe"),
         ("[app]\nsuggestions_max = 0\n", "suggestions_max"),
+        ("[app]\nhistory_years = 0\n", "history_years"),
+        ("[app]\nweeks_min = 2.5\n", "entier"),
+        ("[display]\nswipe_switch_fraction = 3\n", "swipe_switch_fraction"),
     ],
 )
 def test_invalid_sections_are_rejected(tmp_path, extra, expected):

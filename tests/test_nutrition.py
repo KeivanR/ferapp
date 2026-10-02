@@ -603,3 +603,16 @@ def test_food_contributions_folds_the_tail_into_other():
     assert folded[1]["food"] == OTHER_FOODS and folded[1]["other"]
     assert folded[1]["amount"] == pytest.approx(sum(i["amount"] for i in full[1:]))
     assert food_contributions(entries, FOODS, "fer", max_foods=3) == full  # pas besoin de regrouper
+
+
+def test_remove_food_unit():
+    from nutrition import add_food_unit, remove_food_unit
+
+    food_units = {}
+    add_food_unit("baguette", "tranche", 30, FOODS, food_units)
+    add_food_unit("baguette", "quignon", 60, FOODS, food_units)
+    remove_food_unit("Baguette", "TRANCHE", FOODS, food_units)
+    assert food_units == {"baguette": [{"label": "quignon", "grams": 60}]}
+    remove_food_unit("baguette", "quignon", FOODS, food_units)
+    assert food_units == {}
+    remove_food_unit("inconnu", "x", FOODS, food_units)  # sans effet

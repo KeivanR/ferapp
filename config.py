@@ -34,6 +34,9 @@ APP_DEFAULTS = {
     "foods_file": "foods.csv",
     "suggestions_max": 8,
     "splash_seconds": 1.2,
+    "history_years": 5,  # le calendrier de l'accueil remonte jusque-là
+    "weeks_min": 4,  # semaines consultables au minimum dans l'onglet Semaine
+    "my_foods_search_min": 6,  # nombre d'aliments perso à partir duquel la recherche apparaît
 }
 PROFILE_DEFAULTS = {
     "default_age": 30,
@@ -55,6 +58,11 @@ DISPLAY_DEFAULTS = {
     # puis chart_color_other pour le regroupement des plus petits apports.
     "chart_colors": ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7"],
     "chart_color_other": "#a8a7a1",
+    # Glissement du calendrier de l'onglet Semaine (voir ui/widgets.mouse_draggable, ui/week.py)
+    "swipe_switch_fraction": 0.25,
+    "swipe_switch_speed": 400,
+    "swipe_snap_ms": 250,
+    "week_arrow_ms": 350,
 }
 BUILD_DEFAULTS = {"required_group": "Minéraux", "below_limit_factor": 0.0, "traces_value": 0.0}
 
@@ -79,6 +87,13 @@ def _number(value, where: str, minimum: float | None = None) -> float:
     if minimum is not None and value < minimum:
         raise ConfigError(f"{where} : doit être >= {minimum} (reçu {value})")
     return value
+
+
+def _whole(value, where: str, minimum: int | None = None) -> int:
+    """Comme _number, mais n'accepte qu'un nombre entier (ex. un nombre d'années)."""
+    if _number(value, where, minimum) != int(value):
+        raise ConfigError(f"{where} : un nombre entier est attendu (reçu {value!r})")
+    return int(value)
 
 
 def _section(raw: dict, name: str, defaults: dict) -> dict:
@@ -141,6 +156,9 @@ def load_config(path: str | Path | None = None) -> dict:
 
     _number(app["suggestions_max"], "[app] suggestions_max", minimum=1)
     _number(app["splash_seconds"], "[app] splash_seconds", minimum=0)
+    _whole(app["history_years"], "[app] history_years", minimum=1)
+    _whole(app["weeks_min"], "[app] weeks_min", minimum=1)
+    _whole(app["my_foods_search_min"], "[app] my_foods_search_min", minimum=0)
     age_min = _number(profile["age_min"], "[profile] age_min", minimum=0)
     age_max = _number(profile["age_max"], "[profile] age_max", minimum=1)
     if age_min >= age_max:
@@ -161,6 +179,12 @@ def load_config(path: str | Path | None = None) -> dict:
         raise ConfigError('[display] chart_colors : liste de couleurs attendue, ex. ["#2a78d6", "#eb6834"]')
     if display["low_threshold"] > 100:
         raise ConfigError("[display] low_threshold est un pourcentage : entre 0 et 100")
+    fraction = _number(display["swipe_switch_fraction"], "[display] swipe_switch_fraction", minimum=0.05)
+    if fraction > 1:
+        raise ConfigError("[display] swipe_switch_fraction est une part de la largeur : entre 0.05 et 1")
+    _number(display["swipe_switch_speed"], "[display] swipe_switch_speed", minimum=1)
+    _whole(display["swipe_snap_ms"], "[display] swipe_snap_ms", minimum=0)
+    _whole(display["week_arrow_ms"], "[display] week_arrow_ms", minimum=0)
     _number(build["below_limit_factor"], "[foods_build] below_limit_factor", minimum=0)
     _number(build["traces_value"], "[foods_build] traces_value", minimum=0)
 

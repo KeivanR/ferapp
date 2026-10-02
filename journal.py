@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import datetime
 
+from nutrition import normalize
+
 
 def day_key(day: datetime.date) -> str:
     """Clé d'un jour dans le journal : « 2026-09-23 »."""
@@ -46,3 +48,30 @@ def delete_entry(journal: dict[str, list[dict]], day: datetime.date, index: int)
         entries.pop(index)
     if key in journal and not journal[key]:
         del journal[key]
+
+
+# --- Un aliment dans tout le journal (renommer ou supprimer un aliment perso, voir custom_foods.py) ---
+
+
+def count_food(journal: dict[str, list[dict]], food: str) -> int:
+    """Nombre d'entrées du journal, tous jours confondus, pour cet aliment (casse et accents ignorés)."""
+    key = normalize(food)
+    return sum(normalize(e["food"]) == key for entries in journal.values() for e in entries)
+
+
+def rename_food(journal: dict[str, list[dict]], old: str, new: str) -> None:
+    """Toutes les entrées de `old` deviennent des entrées de `new` (mêmes grammes)."""
+    key = normalize(old)
+    for entries in journal.values():
+        for e in entries:
+            if normalize(e["food"]) == key:
+                e["food"] = new
+
+
+def remove_food(journal: dict[str, list[dict]], food: str) -> None:
+    """Retire toutes les entrées de cet aliment ; les jours devenus vides sont retirés."""
+    key = normalize(food)
+    for day in list(journal):
+        journal[day] = [e for e in journal[day] if normalize(e["food"]) != key]
+        if not journal[day]:
+            del journal[day]

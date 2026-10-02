@@ -436,6 +436,20 @@ def add_food_unit(
     return unit
 
 
+def remove_food_unit(food_name: str, label: str, foods: dict[str, dict], food_units: dict[str, list[dict]]) -> None:
+    """Retire une unité que l'utilisateur avait ajoutée pour cet aliment (rien si elle n'existe pas).
+    L'unité par défaut du fichier config/unites_par_defaut.csv, elle, ne se retire pas ici."""
+    food = find_food(food_name, foods)
+    if food is None:
+        return
+    key = normalize(food["name"])
+    remaining = [u for u in food_units.get(key, []) if normalize(u["label"]) != normalize(label)]
+    if remaining:
+        food_units[key] = remaining
+    else:
+        food_units.pop(key, None)
+
+
 def preferred_unit(food_name: str, foods: dict[str, dict], units: list[dict], last_units: dict[str, str]) -> str:
     """Unité à présélectionner pour cet aliment, parmi GRAMS_UNIT et `units` (celles de
     units_for_food) : la dernière que l'utilisateur a utilisée pour lui (`last_units`, voir

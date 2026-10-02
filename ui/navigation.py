@@ -33,6 +33,7 @@ class Tab:
 TABS: list[Tab] = [
     Tab("accueil", "Accueil", ft.Icons.HOME_OUTLINED, ft.Icons.HOME, "show_main"),
     Tab("semaine", "Semaine", ft.Icons.CALENDAR_VIEW_WEEK_OUTLINED, ft.Icons.CALENDAR_VIEW_WEEK, "show_week"),
+    Tab("aliments", "Mes aliments", ft.Icons.RESTAURANT_MENU_OUTLINED, ft.Icons.RESTAURANT_MENU, "show_my_foods"),
     Tab("ressources", "Ressources", ft.Icons.MENU_BOOK_OUTLINED, ft.Icons.MENU_BOOK, "show_resources"),
 ]
 

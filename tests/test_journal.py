@@ -4,7 +4,7 @@ import datetime
 
 import pytest
 
-from journal import add_entry, delete_entry, entries_for, replace_entry
+from journal import add_entry, count_food, delete_entry, entries_for, remove_food, rename_food, replace_entry
 
 DAY = datetime.date(2026, 9, 23)
 OTHER_DAY = datetime.date(2026, 9, 24)
@@ -47,3 +47,15 @@ def test_delete_missing_entry_does_nothing():
     journal = {}
     delete_entry(journal, DAY, 0)
     assert journal == {}
+
+
+def test_count_rename_and_remove_a_food_across_days():
+    journal = {}
+    add_entry(journal, DAY, "Soupe", 300)
+    add_entry(journal, DAY, "pain", 50)
+    add_entry(journal, OTHER_DAY, "soupe", 200)
+    assert count_food(journal, "SOUPE") == 2
+    rename_food(journal, "soupe", "Velouté")
+    assert [e["food"] for e in entries_for(journal, DAY)] == ["Velouté", "pain"]
+    remove_food(journal, "velouté")
+    assert journal == {DAY.isoformat(): [{"food": "pain", "grams": 50}]}

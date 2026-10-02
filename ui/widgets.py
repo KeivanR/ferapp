@@ -12,7 +12,7 @@ import flet as ft
 from nutrition import GRAMS_UNIT, find_food, normalize, parse_grams, search_foods
 
 from .context import AppContext
-from .style import COLOR_CUSTOM
+from .style import COLOR_CUSTOM, SWIPE_SNAP_MS, SWIPE_SWITCH_FRACTION, SWIPE_SWITCH_SPEED
 
 
 def fmt(value: float) -> str:
@@ -22,6 +22,11 @@ def fmt(value: float) -> str:
     if value >= 10:
         return f"{value:.0f}" if abs(value - round(value)) < 0.05 else f"{value:.1f}"
     return f"{value:.1f}" if value >= 1 else f"{value:.2f}"
+
+
+def plural(count: int, word: str) -> str:
+    """plural(1, "repas") -> « 1 repas », plural(3, "ingrédient") -> « 3 ingrédients »."""
+    return f"{count} {word}" + ("" if count == 1 or word.endswith(("s", "x")) else "s")
 
 
 def suggestion_tile(ctx: AppContext, name: str, on_pick) -> ft.ListTile:
@@ -310,11 +315,6 @@ def validate_with_quantity(ctx: AppContext, food_input: ft.TextField, quantity: 
     return food, grams
 
 
-PAGE_SNAP_MS = 250  # durée du calage sur une page entière après un glissement à la souris
-PAGE_SWITCH_FRACTION = 0.25  # part de la largeur à glisser pour changer de page
-PAGE_SWITCH_SPEED = 400  # px/s : un geste rapide change de page même s'il est court
-
-
 def mouse_draggable(pages: ft.PageView) -> ft.Control:
     """Permet aussi de faire glisser un ft.PageView à la souris (ordinateur, navigateur), comme au
     doigt : les pages suivent le pointeur, puis se calent sur une page entière au relâchement.
@@ -340,12 +340,12 @@ def mouse_draggable(pages: ft.PageView) -> ft.Control:
     async def on_end(e) -> None:
         drag, speed, width = state["drag"], e.primary_velocity or 0.0, state["width"] or 1
         index = state["start"]
-        if drag > width * PAGE_SWITCH_FRACTION or speed > PAGE_SWITCH_SPEED:
+        if drag > width * SWIPE_SWITCH_FRACTION or speed > SWIPE_SWITCH_SPEED:
             index -= 1  # glissé vers la droite : page précédente
-        elif drag < -width * PAGE_SWITCH_FRACTION or speed < -PAGE_SWITCH_SPEED:
+        elif drag < -width * SWIPE_SWITCH_FRACTION or speed < -SWIPE_SWITCH_SPEED:
             index += 1
         index = max(0, min(index, len(pages.controls) - 1))
-        await pages.go_to_page(index, animation_duration=PAGE_SNAP_MS, animation_curve=ft.AnimationCurve.EASE_OUT)
+        await pages.go_to_page(index, animation_duration=SWIPE_SNAP_MS, animation_curve=ft.AnimationCurve.EASE_OUT)
 
     return ft.GestureDetector(
         content=pages,
