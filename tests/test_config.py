@@ -30,7 +30,10 @@ def write(tmp_path, text):
 
 def test_shipped_config_is_valid():
     cfg = load_config()
-    assert cfg["nutrients"] and set(cfg["references"]) == {n["key"] for n in cfg["nutrients"]}
+    assert cfg["nutrients"]
+    assert set(cfg["references"]) == {n["key"] for n in cfg["nutrients"] if n["goal"] is not None}
+    assert [g["name"] for g in cfg["groups"]] == list(dict.fromkeys(n["group"] for n in cfg["nutrients"]))
+    assert set(cfg["profile"]["default_groups"]) <= {g["name"] for g in cfg["groups"]}
     assert cfg["app"]["foods_file"].endswith(".csv")
 
 
@@ -104,6 +107,8 @@ def test_duplicate_csv_column_is_rejected(tmp_path):
         ('[foods_build]\nrequired_group = "Inconnu"\n', "aucun groupe"),
         ("[app]\nsuggestions_max = 0\n", "suggestions_max"),
         ("[app]\nhistory_years = 0\n", "history_years"),
+        ('[profile]\ndefault_groups = ["Inconnu"]\n', "default_groups"),
+        ('[groups."Inconnu"]\nicon = "BOLT"\n', "groupes inconnus"),
         ("[app]\ncompare_max_foods = 50\n", "une couleur par aliment"),
         ("[display]\ncompare_scale_max = 50\n", "compare_scale_max"),
         ("[app]\nweeks_min = 2.5\n", "entier"),
@@ -225,3 +230,37 @@ def test_resources_are_parsed(tmp_path):
 def test_invalid_resources_are_rejected(tmp_path, text, expected):
     with pytest.raises(ConfigError, match=expected):
         load_resources(write_resources(tmp_path, text))
+
+
+def test_goal_and_missing_reference(tmp_path):
+    """Un nutriment peut être à limiter (goal = "max") ou sans repère (pas de bloc reference)."""
+    extra = """
+        [nutrients.sel]
+        label = "Sel"
+        unit = "g"
+        group = "Minéraux"
+        csv_column = "sel_g"
+        goal = "max"
+        [nutrients.sel.reference]
+        homme = [[200, 5]]
+        femme = [[200, 5]]
+
+        [nutrients.fructose]
+        label = "Fructose"
+        unit = "g"
+        group = "Minéraux"
+        csv_column = "fructose_g"
+    """
+    cfg = load_config(write(tmp_path, VALID + extra))
+    goals = {n["key"]: n["goal"] for n in cfg["nutrients"]}
+    assert goals["fer"] == "min" and goals["sel"] == "max" and goals["fructose"] is None
+    assert "fructose" not in cfg["references"] and cfg["references"]["sel"]["homme"] == [(200, 5)]
+    with pytest.raises(ConfigError, match="goal"):
+        load_config(write(tmp_path, VALID + extra + '        goal = "max"\n'))  # goal sans reference
+    with pytest.raises(ConfigError, match="goal"):
+        load_config(write(tmp_path, VALID + extra.replace('goal = "max"', 'goal = "plafond"')))
+
+
+def test_groups_get_description_and_icon(tmp_path):
+    cfg = load_config(write(tmp_path, '[groups."Minéraux"]\ndescription = "Fer et compagnie"\n' + VALID))
+    assert cfg["groups"] == [{"name": "Minéraux", "description": "Fer et compagnie", "icon": "CATEGORY_OUTLINED"}]

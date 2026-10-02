@@ -20,6 +20,7 @@ from pathlib import Path
 
 import flet as ft
 
+from custom_foods import refresh_recipes
 from nutrition import CONFIG, load_foods, merge_foods
 from storage import load_state
 
@@ -51,6 +52,8 @@ def run(page: ft.Page) -> None:
     page.locale_configuration = ft.LocaleConfiguration(supported_locales=[french], current_locale=french)
 
     state = load_state()
+    # Les recettes suivent la base du jour : nouveaux nutriments, table Ciqual mise à jour...
+    refresh_recipes(state["custom_foods"], OFFICIAL_FOODS)
     ctx = AppContext(
         page=page,
         state=state,

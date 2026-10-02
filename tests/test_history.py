@@ -5,11 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from history import average_rates, day_rates, rates_by_day, week_days, week_start, week_summary
-from nutrition import ALL_KEYS, load_foods
+from history import average_totals, day_totals, totals_by_day, week_days, week_start, week_summary
+from nutrition import load_foods
 
 FOODS = load_foods(Path(__file__).parent / "foods_demo.csv")
-RECOMMENDED = {k: 1000.0 for k in ALL_KEYS} | {"fer": 10.0}
 MONDAY = datetime.date(2026, 9, 21)
 
 
@@ -20,33 +19,32 @@ def test_week_starts_on_monday_and_has_seven_days():
     assert len(days) == 7 and days[0] == MONDAY and days[-1] == datetime.date(2026, 9, 27)
 
 
-def test_day_rates_none_when_nothing_noted():
-    assert day_rates({}, MONDAY, FOODS, RECOMMENDED) is None
-    assert day_rates({MONDAY.isoformat(): []}, MONDAY, FOODS, RECOMMENDED) is None
+def test_day_totals_none_when_nothing_noted():
+    assert day_totals({}, MONDAY, FOODS) is None
+    assert day_totals({MONDAY.isoformat(): []}, MONDAY, FOODS) is None
 
 
-def test_day_rates_are_share_of_recommendation():
+def test_day_totals_are_amounts():
     journal = {MONDAY.isoformat(): [{"food": "lentilles cuites", "grams": 200}]}  # 3,3 mg de fer / 100 g
-    rates = day_rates(journal, MONDAY, FOODS, RECOMMENDED)
-    assert rates["fer"] == pytest.approx(6.6 / 10)
+    assert day_totals(journal, MONDAY, FOODS)["fer"] == pytest.approx(6.6)
 
 
 def test_average_ignores_days_without_entries():
     tuesday = MONDAY + datetime.timedelta(days=1)
     journal = {
-        MONDAY.isoformat(): [{"food": "lentilles cuites", "grams": 100}],  # fer 3,3 mg -> 33 %
-        tuesday.isoformat(): [{"food": "lentilles cuites", "grams": 300}],  # fer 9,9 mg -> 99 %
+        MONDAY.isoformat(): [{"food": "lentilles cuites", "grams": 100}],  # fer 3,3 mg
+        tuesday.isoformat(): [{"food": "lentilles cuites", "grams": 300}],  # fer 9,9 mg
     }
-    rates = rates_by_day(journal, week_days(MONDAY), FOODS, RECOMMENDED)
-    assert list(rates) == week_days(MONDAY)
-    assert sum(r is not None for r in rates.values()) == 2
-    averages = average_rates(rates, ["fer", "calcium"])
-    assert averages["fer"] == pytest.approx((0.33 + 0.99) / 2)
+    totals = totals_by_day(journal, week_days(MONDAY), FOODS)
+    assert list(totals) == week_days(MONDAY)
+    assert sum(t is not None for t in totals.values()) == 2
+    averages = average_totals(totals, ["fer", "calcium"])
+    assert averages["fer"] == pytest.approx((3.3 + 9.9) / 2)
 
 
 def test_average_is_none_for_an_empty_week():
-    rates = rates_by_day({}, week_days(MONDAY), FOODS, RECOMMENDED)
-    assert average_rates(rates, ["fer"]) == {"fer": None}
+    totals = totals_by_day({}, week_days(MONDAY), FOODS)
+    assert average_totals(totals, ["fer"]) == {"fer": None}
 
 
 def test_browsable_weeks_from_first_noted_week_to_current():
@@ -61,11 +59,11 @@ def test_browsable_weeks_from_first_noted_week_to_current():
     assert len(browsable_weeks({}, today, min_weeks=4)) == 4
 
 
-def test_week_summary_gathers_rates_averages_and_filled_days():
-    journal = {MONDAY.isoformat(): [{"food": "lentilles cuites", "grams": 100}]}  # fer 33 %
-    summary = week_summary(journal, MONDAY, FOODS, RECOMMENDED, ["fer"])
+def test_week_summary_gathers_totals_averages_and_filled_days():
+    journal = {MONDAY.isoformat(): [{"food": "lentilles cuites", "grams": 100}]}  # fer 3,3 mg
+    summary = week_summary(journal, MONDAY, FOODS, ["fer"])
     assert summary.days == week_days(MONDAY)
     assert summary.filled_days == 1
-    assert summary.rates[MONDAY]["fer"] == pytest.approx(0.33)
-    assert summary.rates[MONDAY + datetime.timedelta(days=1)] is None
-    assert summary.averages == {"fer": pytest.approx(0.33)}
+    assert summary.totals[MONDAY]["fer"] == pytest.approx(3.3)
+    assert summary.totals[MONDAY + datetime.timedelta(days=1)] is None
+    assert summary.averages == {"fer": pytest.approx(3.3)}

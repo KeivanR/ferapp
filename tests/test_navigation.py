@@ -1,4 +1,5 @@
-"""Cohérence de la barre de navigation : chaque onglet pointe vers un écran existant."""
+"""Cohérence de l'interface avec la configuration : chaque onglet pointe vers un écran existant,
+chaque groupe de nutriments a une icône qui existe."""
 
 import dataclasses
 
@@ -20,3 +21,12 @@ def test_tab_keys_are_unique_and_found():
     assert [tab_index(k) for k in keys] == list(range(len(TABS)))
     with pytest.raises(ValueError):
         tab_index("inexistant")
+
+
+def test_every_nutrient_group_has_an_existing_icon():
+    import flet as ft
+
+    from nutrition import GROUPS
+
+    for group in GROUPS:
+        assert hasattr(ft.Icons, group["icon"]), f'[groups."{group["name"]}"] icon : {group["icon"]!r} inconnue'

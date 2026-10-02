@@ -1,5 +1,6 @@
-"""Onglet « Semaine » : taux de complétion de chaque nutriment suivi, jour par jour, du lundi
-au dimanche, avec la moyenne de la semaine. Les flèches du haut passent aux semaines
+"""Onglet « Semaine » : apport de chaque nutriment suivi, jour par jour, du lundi au dimanche,
+comparé à son repère (apport à atteindre, maximum à ne pas dépasser, ou simple quantité s'il n'a
+pas de repère), avec la moyenne de la semaine. Les flèches du haut passent aux semaines
 précédentes / suivantes ; on peut aussi faire glisser le tableau (vers la droite = semaine
 précédente) : il suit le doigt, puis se cale sur une semaine entière, du lundi au dimanche
 (ft.PageView, un défilement natif). Seuls les jours et les cases glissent : la colonne des
@@ -19,14 +20,24 @@ from typing import Callable
 import flet as ft
 
 from history import WeekSummary, browsable_weeks, week_summary
-from nutrition import recommended_intakes, selected_nutrients
+from nutrition import (
+    GOAL_MAX,
+    GOAL_MIN,
+    STATUS_DONE,
+    STATUS_INFO,
+    STATUS_OVER,
+    intake_ratio,
+    intake_status,
+    recommended_intakes,
+    selected_nutrients,
+)
 
 from .context import AppContext
 from .dates import DAY_LETTERS, day_title, week_label
 from .layout import screen_title, show_screen
 from .nutrient_detail import show_nutrient_detail
-from .style import COLOR_DONE, LOW_THRESHOLD, WEEK_ARROW_MS, WEEKS_MIN, level_color
-from .widgets import mouse_draggable
+from .style import LOW_THRESHOLD, WEEK_ARROW_MS, WEEKS_MIN, status_color
+from .widgets import fmt, mouse_draggable
 
 LABEL_WIDTH = 100  # colonne des noms de nutriments ; les 7 colonnes de jours se partagent le reste
 CELL_HEIGHT = 34
@@ -36,25 +47,42 @@ ROW_HEIGHT = 38  # une ligne de nutriment (nom + moyenne)
 SUMMARY_HEIGHT = 24  # « 4 jours notés sur 7 »
 
 
-def rate_of(day_rates: dict[str, float] | None, key: str) -> float | None:
-    return None if day_rates is None else day_rates[key]
-
-
-def rate_cell(ratio: float | None, future: bool, on_click: Callable[[], None] | None = None) -> ft.Control:
-    """Une case du tableau : coche verte (apport atteint), sinon le pourcentage sur fond rouge (bas)
-    ou orange (en cours), d'autant plus soutenu qu'on s'approche de 100 % ; « – » si rien n'a été
-    noté, vide pour un jour à venir. Couleurs : ui/style.level_color. `on_click` : appelé quand on
-    touche la case (jamais pour un jour à venir)."""
+def intake_cell(
+    nutrient: dict,
+    amount: float | None,
+    reference: float | None,
+    future: bool,
+    on_click: Callable[[], None] | None = None,
+) -> ft.Control:
+    """Une case du tableau, selon le repère du nutriment (nutrition.intake_status) :
+    - apport à atteindre : coche verte une fois atteint, sinon le pourcentage sur fond rouge (bas)
+      ou orange (en cours), d'autant plus soutenu qu'on s'approche de 100 % ;
+    - maximum à ne pas dépasser : le pourcentage du maximum, sur fond rouge plein s'il est dépassé ;
+    - sans repère : la quantité du jour, sur fond neutre.
+    « – » si rien n'a été noté (`amount` None), vide pour un jour à venir. `on_click` : appelé
+    quand on touche la case (jamais pour un jour à venir)."""
     clickable = on_click is not None and not future
     if future:
         content, bgcolor = None, None
-    elif ratio is None:
+    elif amount is None:
         content, bgcolor = ft.Text("–", color=ft.Colors.GREY_600), ft.Colors.GREY_200
-    elif ratio >= 1:
-        content, bgcolor = ft.Icon(ft.Icons.CHECK, color=ft.Colors.WHITE, size=18), COLOR_DONE
     else:
-        content = ft.Text(f"{ratio * 100:.0f}", size=12, weight=ft.FontWeight.W_600)
-        bgcolor = ft.Colors.with_opacity(0.25 + 0.45 * ratio, level_color(ratio))
+        status = intake_status(nutrient, amount, reference)
+        ratio = intake_ratio(amount, reference)
+        color = status_color(status, ratio, flag_low=True)
+        # Pas de pourcentage possible : la quantité.
+        text = f"{ratio * 100:.0f}" if ratio is not None else fmt(amount) if amount else "0"
+        if status == STATUS_DONE:
+            content, bgcolor = ft.Icon(ft.Icons.CHECK, color=ft.Colors.WHITE, size=18), color
+        elif status == STATUS_OVER:
+            content = ft.Text(text, size=12, weight=ft.FontWeight.BOLD, color=ft.Colors.WHITE)
+            bgcolor = color
+        elif status == STATUS_INFO:
+            content = ft.Text(text, size=11, color=ft.Colors.GREY_800)
+            bgcolor = ft.Colors.with_opacity(0.16, color)
+        else:
+            content = ft.Text(text, size=12, weight=ft.FontWeight.W_600)
+            bgcolor = ft.Colors.with_opacity(0.25 + 0.45 * min(ratio or 0.0, 1.0), color)
     return ft.Container(
         content,
         height=CELL_HEIGHT,
@@ -102,9 +130,17 @@ def nutrient_label(label: str, average_text: ft.Text) -> ft.Control:
     )
 
 
-def set_average(text: ft.Text, average: float | None) -> None:
-    text.value = "moy. –" if average is None else f"moy. {average * 100:.0f} %"
-    text.color = COLOR_DONE if (average or 0) >= 1 else ft.Colors.GREY_700
+def set_average(text: ft.Text, nutrient: dict, average: float | None, reference: float | None) -> None:
+    """Moyenne de la semaine sous le nom du nutriment : en % du repère, ou en quantité s'il n'en a pas."""
+    ratio = None if average is None else intake_ratio(average, reference)
+    status = STATUS_INFO if average is None else intake_status(nutrient, average, reference)
+    if average is None:
+        text.value = "moy. –"
+    elif ratio is None:
+        text.value = f"moy. {fmt(average)} {nutrient['unit']}"
+    else:
+        text.value = f"moy. {ratio * 100:.0f} %"
+    text.color = status_color(status) if status in (STATUS_DONE, STATUS_OVER) else ft.Colors.GREY_700
 
 
 def summary_text(summary: WeekSummary, shown: list[dict]) -> str:
@@ -114,29 +150,43 @@ def summary_text(summary: WeekSummary, shown: list[dict]) -> str:
     return f"{n} jour{'s' if n > 1 else ''} noté{'s' if n > 1 else ''} sur 7."
 
 
-def legend() -> ft.Control:
-    def item(cell: ft.Control, text: str) -> ft.Control:
-        return ft.Row([ft.Container(cell, width=30), ft.Text(text, size=12, color=ft.Colors.GREY_700)], spacing=6)
+def legend(shown: list[dict]) -> ft.Control:
+    """Légende des cases ; les lignes sur les maximums et les nutriments sans repère n'apparaissent
+    que si le profil en suit."""
 
-    return ft.Column(
-        [
-            item(rate_cell(1.0, future=False), "apport recommandé atteint"),
-            item(rate_cell(0.75, future=False), "% de l'apport recommandé (ici 75 %)"),
-            item(rate_cell(0.3, future=False), f"apport bas : moins de {LOW_THRESHOLD * 100:.0f} %"),
-            item(rate_cell(None, future=False), "rien noté ce jour-là"),
-            ft.Text(
-                "La moyenne ne compte que les jours où tu as noté quelque chose.",
-                size=12,
-                color=ft.Colors.GREY_700,
-            ),
-        ],
-        spacing=6,
-    )
+    def item(cell: ft.Control, text: str) -> ft.Control:
+        return ft.Row(
+            [ft.Container(cell, width=30), ft.Text(text, size=12, color=ft.Colors.GREY_700, expand=True)], spacing=6
+        )
+
+    def sample(goal: str | None, amount: float | None) -> ft.Control:
+        """Case d'exemple : `amount` pour un repère de 100 (donc lu comme un pourcentage)."""
+        return intake_cell({"goal": goal}, amount, None if goal is None else 100, future=False)
+
+    goals = {n["goal"] for n in shown}
+    items = [
+        item(sample(GOAL_MIN, 100), "apport recommandé atteint"),
+        item(sample(GOAL_MIN, 75), "% de l'apport recommandé (ici 75 %)"),
+        item(sample(GOAL_MIN, 30), f"apport bas : moins de {LOW_THRESHOLD * 100:.0f} %"),
+    ]
+    if GOAL_MAX in goals:
+        items += [
+            item(sample(GOAL_MAX, 60), "nutriment à limiter : % du maximum (ici 60 %)"),
+            item(sample(GOAL_MAX, 130), "maximum dépassé"),
+        ]
+    if None in goals:
+        items.append(item(sample(None, 12), "nutriment sans repère : quantité du jour"))
+    items += [
+        item(sample(GOAL_MIN, None), "rien noté ce jour-là"),
+        ft.Text("La moyenne ne compte que les jours où tu as noté quelque chose.", size=12, color=ft.Colors.GREY_700),
+    ]
+    return ft.Column(items, spacing=6)
 
 
 def week_table(
     summary: WeekSummary,
     shown: list[dict],
+    recommended: dict[str, float | None],
     today: datetime.date,
     on_cell_click: Callable[[dict, datetime.date], None],
     on_day_click: Callable[[datetime.date], None],
@@ -147,7 +197,7 @@ def week_table(
     jour ou case vide touchée."""
 
     def cell_action(nutrient: dict, day: datetime.date) -> Callable[[], None]:
-        if summary.rates[day] is None:  # rien de noté : on va directement noter ses repas
+        if summary.totals[day] is None:  # rien de noté : on va directement noter ses repas
             return lambda: on_day_click(day)
         return lambda: on_cell_click(nutrient, day)
 
@@ -155,8 +205,10 @@ def week_table(
     rows = [
         ft.Row(
             [
-                rate_cell(
-                    rate_of(summary.rates[d], n["key"]),
+                intake_cell(
+                    n,
+                    None if summary.totals[d] is None else summary.totals[d][n["key"]],
+                    recommended[n["key"]],
                     future=d > today,
                     on_click=cell_action(n, d),
                 )
@@ -212,12 +264,12 @@ def show_week(ctx: AppContext) -> None:
     def summary_of(index: int) -> WeekSummary:
         if index not in summaries:
             keys = [n["key"] for n in shown]
-            summaries[index] = week_summary(ctx.state["journal"], starts[index], ctx.foods, recommended, keys)
+            summaries[index] = week_summary(ctx.state["journal"], starts[index], ctx.foods, keys)
         return summaries[index]
 
     def build(index: int) -> None:
         if 0 <= index < len(pages) and pages[index].content is None:
-            pages[index].content = week_table(summary_of(index), shown, today, open_detail, open_day)
+            pages[index].content = week_table(summary_of(index), shown, recommended, today, open_detail, open_day)
 
     # Colonne fixe de gauche : les noms ne bougent pas, les moyennes suivent la semaine affichée.
     average_texts = {n["key"]: ft.Text(size=11) for n in shown}
@@ -241,8 +293,8 @@ def show_week(ctx: AppContext) -> None:
             build(i)
         summary = summary_of(index)
         subtitle.value = week_label(starts[index])
-        for key, text in average_texts.items():
-            set_average(text, summary.averages[key])
+        for n in shown:
+            set_average(average_texts[n["key"]], n, summary.averages[n["key"]], recommended[n["key"]])
         week_info.value = summary_text(summary, shown)
         previous_button.disabled = index == 0
         next_button.disabled = index == len(starts) - 1  # pas de semaine future
@@ -275,7 +327,7 @@ def show_week(ctx: AppContext) -> None:
         [
             screen_title("Semaine", subtitle, trailing=ft.Row([previous_button, next_button], spacing=0)),
             ft.Text(
-                "Part de l'apport recommandé atteinte chaque jour, pour chaque nutriment suivi. "
+                "Où tu en es chaque jour, pour chaque nutriment suivi, par rapport à son repère. "
                 "Touche une case pour voir ce que chaque aliment a apporté, un jour pour modifier ses repas, "
                 "et fais glisser le tableau vers la droite pour remonter dans le temps.",
                 color=ft.Colors.GREY_700,
@@ -288,7 +340,7 @@ def show_week(ctx: AppContext) -> None:
             ),
             week_info,
             ft.Divider(height=16),
-            legend(),
+            legend(shown),
         ],
         spacing=12,
     )

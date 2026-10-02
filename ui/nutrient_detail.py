@@ -15,13 +15,13 @@ from typing import Callable
 
 import flet as ft
 
-from nutrition import food_contributions
+from nutrition import GOAL_MAX, STATUS_DONE, STATUS_INFO, STATUS_OVER, food_contributions, intake_ratio, intake_status
 
 from .context import AppContext
 from .layout import show_popup
 from .rings import segmented_ring
-from .style import CHART_COLOR_OTHER, CHART_COLORS, COLOR_DONE
-from .widgets import fmt
+from .style import CHART_COLOR_OTHER, CHART_COLORS, status_color
+from .widgets import fmt, reference_label
 
 BIG_RING_SIZE = 200
 
@@ -30,7 +30,7 @@ def show_nutrient_detail(
     ctx: AppContext,
     nutrient: dict,
     entries: list[dict],
-    recommended: float,
+    recommended: float | None,
     day_label: str | None = None,
     on_edit_day: Callable[[], None] | None = None,
 ) -> None:
@@ -40,22 +40,32 @@ def show_nutrient_detail(
     items = food_contributions(entries, ctx.foods, nutrient["key"], max_foods=len(CHART_COLORS))
     colors = [CHART_COLOR_OTHER if item["other"] else CHART_COLORS[i] for i, item in enumerate(items)]
     total = sum(item["amount"] for item in items)
-    ratio = total / recommended if recommended else 0.0
+    status = intake_status(nutrient, total, recommended)
+    ratio = intake_ratio(total, recommended)  # None : pas de repère (ou maximum nul)
     unit = nutrient["unit"]
 
-    # Chaque aliment occupe sa part de la progression ; au-delà de 100 %, le tour complet est
-    # partagé entre les aliments, dans les mêmes proportions.
-    filled = min(ratio, 1.0)
+    # Chaque aliment occupe sa part de la progression ; au-delà de 100 %, ou sans repère, le tour
+    # complet est partagé entre les aliments, dans les mêmes proportions.
+    filled = 1.0 if ratio is None else min(ratio, 1.0)
     segments = [(filled * item["amount"] / total, color) for item, color in zip(items, colors)] if total else []
 
+    if status == STATUS_DONE:
+        headline: ft.Control = ft.Icon(ft.Icons.CHECK, color=status_color(status), size=40)
+    else:
+        headline = ft.Text(
+            fmt(total) if ratio is None else f"{ratio * 100:.0f}%",
+            size=34,
+            weight=ft.FontWeight.BOLD,
+            color=status_color(status) if status == STATUS_OVER else None,
+        )
+    if status == STATUS_INFO:
+        under = f"{unit} · sans repère"
+    else:
+        under = f"{fmt(total)} / {reference_label(nutrient, recommended)}"
     center = ft.Column(
         [
-            (
-                ft.Icon(ft.Icons.CHECK, color=COLOR_DONE, size=40)
-                if ratio >= 1
-                else ft.Text(f"{ratio * 100:.0f}%", size=34, weight=ft.FontWeight.BOLD)
-            ),
-            ft.Text(f"{fmt(total)} / {fmt(recommended)} {unit}", size=13, color=ft.Colors.GREY_700),
+            headline,
+            ft.Text(under, size=13, color=ft.Colors.GREY_700),
         ],
         horizontal_alignment=ft.CrossAxisAlignment.CENTER,
         alignment=ft.MainAxisAlignment.CENTER,
@@ -64,7 +74,8 @@ def show_nutrient_detail(
     )
 
     def legend_row(item: dict, color: str) -> ft.Control:
-        share = item["amount"] / recommended if recommended else 0.0
+        # Part du repère ; sans repère, part du total du jour.
+        share = item["amount"] / (recommended or total)
         return ft.Row(
             [
                 ft.Container(width=14, height=14, border_radius=4, bgcolor=color),
@@ -77,7 +88,13 @@ def show_nutrient_detail(
 
     if items:
         legend = ft.Column([legend_row(item, color) for item, color in zip(items, colors)], spacing=8)
-        caption = "Part de chaque aliment dans l'apport du jour (% = part de l'apport recommandé)."
+        caption = "Part de chaque aliment dans l'apport du jour " + (
+            "(% = part du total du jour)."
+            if ratio is None
+            else "(% = part du maximum)."
+            if nutrient["goal"] == GOAL_MAX
+            else "(% = part de l'apport recommandé)."
+        )
     else:
         when = "ce jour-là" if day_label else "aujourd'hui"
         legend = ft.Text(f"Aucun aliment noté {when} n'en apporte.", color=ft.Colors.GREY_700)

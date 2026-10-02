@@ -54,6 +54,8 @@ def test_nutrient_shares_are_amount_and_share_of_recommendation():
     shares = nutrient_shares("lentilles cuites", 200, FOODS, RECOMMENDED, ["fer"])  # 3,3 mg / 100 g
     assert shares["fer"]["amount"] == pytest.approx(6.6)
     assert shares["fer"]["ratio"] == pytest.approx(0.66)
+    no_reference = nutrient_shares("lentilles cuites", 200, FOODS, {"fer": None}, ["fer"])
+    assert no_reference["fer"]["amount"] == pytest.approx(6.6) and no_reference["fer"]["ratio"] is None
 
 
 def test_best_slots():
@@ -70,6 +72,7 @@ def test_axis_max_picks_the_smallest_step_and_respects_the_cap():
     assert axis_max([1.2], cap=2.0) == 1.5
     assert axis_max([8.0], cap=2.0) == 2.0  # plafonné
     assert axis_max([8.0], cap=10.0) == 10.0
+    assert axis_max([None, 0.4, None], cap=1.0) == 0.5  # nutriments sans repère ignorés
 
 
 def test_frequent_foods_most_noted_first_and_only_existing():

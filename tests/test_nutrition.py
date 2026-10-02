@@ -147,8 +147,9 @@ def test_shipped_config_status_ordering():
 
     for age in (12, 25, 45):
         r = {s: recommended_intakes(Profile(age=age, sex="F", status=s)) for s in ("non_reglee", "reglee", "abondante")}
-        assert all(r["reglee"][n["key"]] >= r["non_reglee"][n["key"]] for n in NUTRIENTS), age
-        assert all(r["abondante"][n["key"]] >= r["reglee"][n["key"]] for n in NUTRIENTS), age
+        with_reference = [n["key"] for n in NUTRIENTS if n["goal"] is not None]
+        assert all(r["reglee"][k] >= r["non_reglee"][k] for k in with_reference), age
+        assert all(r["abondante"][k] >= r["reglee"][k] for k in with_reference), age
 
 
 def test_completion_can_exceed_one():
@@ -230,11 +231,14 @@ def test_search_foods_no_aliment_moyen_is_unaffected():
 # --- choix des nutriments dans le profil -------------------------------------
 
 
-def test_profile_defaults_to_all_nutrients():
-    assert Profile().nutrients == ALL_KEYS
+def test_profile_defaults_to_the_default_groups():
+    from nutrition import DEFAULT_GROUPS, DEFAULT_KEYS, NUTRIENTS
+
+    assert DEFAULT_KEYS == [n["key"] for n in NUTRIENTS if not DEFAULT_GROUPS or n["group"] in DEFAULT_GROUPS]
+    assert DEFAULT_KEYS and Profile().nutrients == DEFAULT_KEYS
     # ancien profil sauvegardé sans le champ "nutrients"
     old = {"age": 30, "sex": "F", "pregnant": False, "breastfeeding": False}
-    assert Profile.from_dict(old).nutrients == ALL_KEYS
+    assert Profile.from_dict(old).nutrients == DEFAULT_KEYS
 
 
 def test_profile_nutrients_roundtrip_and_order():
@@ -247,18 +251,21 @@ def test_profile_nutrients_roundtrip_and_order():
 
 def test_profile_ignores_unknown_and_empty_selection():
     assert Profile.from_dict({"nutrients": ["fer", "inconnu"]}).nutrients == ["fer"]
-    assert Profile.from_dict({"nutrients": []}).nutrients == ALL_KEYS
+    assert Profile.from_dict({"nutrients": []}).nutrients == Profile().nutrients
 
 
 # --- vitamines ---------------------------------------------------------------
-def test_every_nutrient_has_reference_and_group():
+def test_every_nutrient_has_a_group_and_a_valid_reference_if_any():
     from config import BAND_KEYS, SCALAR_KEYS
     from nutrition import AGE_MAX, NUTRIENTS, REFERENCES
 
     assert NUTRIENTS
     for n in NUTRIENTS:
-        ref = REFERENCES[n["key"]]
         assert n["group"] and n["label"] and n["unit"] and n["col"]
+        assert (n["key"] in REFERENCES) == (n["goal"] is not None)
+        if n["goal"] is None:
+            continue
+        ref = REFERENCES[n["key"]]
         assert set(ref) >= {"homme", "femme"}
         assert set(ref) <= set(BAND_KEYS) | set(SCALAR_KEYS)
         assert ref["homme"][-1][0] >= AGE_MAX  # toutes les tranches d'âge sont couvertes
@@ -292,7 +299,7 @@ def test_top_nutrient_uses_share_of_recommendation_not_raw_amount():
     entry = {"food": "lentilles cuites", "grams": 100}
     top = top_nutrient(entry, FOODS, recs, NUTRIENTS)
     # le potassium a la plus grosse quantité brute (369 mg) mais le fer pèse plus (3,3/16)
-    assert top["key"] == "fer"
+    assert top["key"] == "fer"  # 10 % du fer, alors que le sel est à 80 % de son maximum
     assert top["amount"] == pytest.approx(3.3)
     assert top["unit"] == "mg"
     assert top["share"] == pytest.approx(3.3 / 16)
@@ -616,3 +623,48 @@ def test_remove_food_unit():
     remove_food_unit("baguette", "quignon", FOODS, food_units)
     assert food_units == {}
     remove_food_unit("inconnu", "x", FOODS, food_units)  # sans effet
+
+
+# --- repères : à atteindre, à limiter, sans repère ---------------------------
+
+
+def test_recommended_intakes_is_none_without_reference():
+    refs = {"fer": {"homme": [(200, 11)], "femme": [(200, 11)]}}
+    nutrients = [{"key": "fer", "goal": "min"}, {"key": "fructose", "goal": None}]
+    assert recommended_intakes(Profile(sex="H"), references=refs, nutrients=nutrients) == {"fer": 11, "fructose": None}
+
+
+def test_intake_ratio_and_status():
+    from nutrition import intake_ratio, intake_status
+
+    fer, sel, fructose = {"goal": "min"}, {"goal": "max"}, {"goal": None}
+    assert intake_ratio(5, 10) == 0.5 and intake_ratio(5, None) is None and intake_ratio(5, 0) is None
+    assert intake_status(fer, 5, 10) == "todo" and intake_status(fer, 10, 10) == "done"
+    assert intake_status(sel, 5, 5) == "within" and intake_status(sel, 5.1, 5) == "over"
+    assert intake_status(fructose, 12, None) == "info"
+    # maximum nul (alcool pour un mineur) : dépassé dès le premier gramme
+    assert intake_status(sel, 0, 0) == "within" and intake_status(sel, 1, 0) == "over"
+
+
+def test_top_nutrient_ignores_limits_and_nutrients_without_reference():
+    from nutrition import top_nutrient
+
+    per100 = {k: 0.0 for k in ALL_KEYS} | {"fer": 1.0, "sel": 4.0, "fructose": 30.0}
+    foods = {"plat": {"name": "plat", "per100": per100, "custom": False}}
+    nutrients = [
+        {"key": "fer", "label": "Fer", "unit": "mg", "goal": "min"},
+        {"key": "sel", "label": "Sel", "unit": "g", "goal": "max"},
+        {"key": "fructose", "label": "Fructose", "unit": "g", "goal": None},
+    ]
+    top = top_nutrient({"food": "plat", "grams": 100}, foods, {"fer": 10, "sel": 5, "fructose": None}, nutrients)
+    assert top["key"] == "fer"  # 10 % du fer, alors que le sel est à 80 % de son maximum
+
+
+def test_real_csv_has_macronutrients():
+    path = ROOT / "foods.csv"
+    if not path.exists():
+        pytest.skip("foods.csv non généré")
+    foods = load_foods(path)
+    bread = foods[normalize("Pain (aliment moyen)")]["per100"]
+    assert bread["glucides"] > 40 and bread["amidon"] > 30 and bread["proteines"] > 5 and bread["sel"] > 0.5
+    assert foods[normalize("Vin rouge")]["per100"]["alcool"] > 5

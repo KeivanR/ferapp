@@ -10,7 +10,7 @@ l'ajout et ne change plus, pour qu'un aliment garde sa couleur quand on en retir
 
 from __future__ import annotations
 
-from nutrition import entry_nutrients, normalize, units_for_food
+from nutrition import entry_nutrients, intake_ratio, normalize, units_for_food
 
 REFERENCE_GRAMS = 100.0  # quantité comparée quand on ne compare pas « par portion »
 # Graduations possibles pour le bout de l'axe (en fraction de l'apport recommandé) : on prend la
@@ -62,14 +62,13 @@ def compared_grams(name: str, foods: dict[str, dict], food_units: dict[str, list
 
 
 def nutrient_shares(
-    name: str, grams: float, foods: dict[str, dict], recommended: dict[str, float], keys: list[str]
+    name: str, grams: float, foods: dict[str, dict], recommended: dict[str, float | None], keys: list[str]
 ) -> dict[str, dict]:
     """Pour chaque nutriment de `keys`, ce qu'apportent `grams` g de l'aliment :
-    {clé: {"amount": quantité, "ratio": part de l'apport recommandé (1.0 = 100 %)}}."""
+    {clé: {"amount": quantité, "ratio": part du repère (1.0 = 100 %), ou None si le nutriment
+    n'a pas de repère}}."""
     amounts = entry_nutrients({"food": name, "grams": grams}, foods)
-    return {
-        k: {"amount": amounts[k], "ratio": amounts[k] / recommended[k] if recommended.get(k) else 0.0} for k in keys
-    }
+    return {k: {"amount": amounts[k], "ratio": intake_ratio(amounts[k], recommended.get(k))} for k in keys}
 
 
 def best_slots(shares_by_slot: dict[int, dict[str, dict]], key: str) -> set[int]:
@@ -81,12 +80,13 @@ def best_slots(shares_by_slot: dict[int, dict[str, dict]], key: str) -> set[int]
     return {slot for slot, shares in shares_by_slot.items() if top > 0 and shares[key]["amount"] == top}
 
 
-def axis_max(ratios: list[float], cap: float) -> float:
-    """Valeur du bout de l'axe, commune à tout le graphique : la plus petite graduation de
-    AXIS_STEPS qui contient le plus grand ratio, sans dépasser `cap`. Une barre au-delà de `cap`
+def axis_max(ratios: list[float | None], cap: float) -> float:
+    """Valeur du bout de l'axe, commune à tous les nutriments qui ont un repère : la plus petite
+    graduation de AXIS_STEPS qui contient le plus grand ratio, sans dépasser `cap` (les None,
+    nutriments sans repère, sont ignorés : leurs barres ont leur propre échelle). Une barre au-delà de `cap`
     (ex. un abat très riche en vitamine B12) est dessinée pleine, avec une marque « dépasse » :
     sans cette limite, elle écraserait toutes les autres."""
-    top = max(ratios, default=0.0)
+    top = max((r for r in ratios if r is not None), default=0.0)
     steps = [s for s in AXIS_STEPS if s <= cap] or [cap]
     return next((s for s in steps if s >= top), steps[-1])
 

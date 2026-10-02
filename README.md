@@ -1,8 +1,9 @@
 # Nutri-Suivi (prototype)
 
 App mobile en Python (Flet) : tu saisis ce que tu manges (aliment + grammes), l'app
-additionne les minéraux et vitamines ingérés dans la journée et affiche un cercle de complétion par
-nutriment (100 % = apport recommandé pour ton profil atteint).
+additionne ce que tu as ingéré dans la journée (minéraux, vitamines, macronutriments, sucres, sel...) et affiche
+un cercle par nutriment suivi, comparé à son repère pour ton profil : un apport à atteindre, un maximum à ne pas
+dépasser, ou la simple quantité quand il n'existe pas de repère.
 
 Nécessite **Python 3.11 ou plus** (lecture de `config/config.toml` avec `tomllib`).
 
@@ -61,14 +62,25 @@ ruff check . && ruff format . # vérifie le code et le remet en forme (pip insta
     tant qu'une recette l'utilise (il faut d'abord le retirer de la recette) ;
   - **Ressources** : des liens utiles (carence en fer, recommandations alimentaires, sources des données) et une
     FAQ dépliable, question par question. Tout ce contenu est dans `config/ressources.toml`.
-- **Profil** : l'icône en haut de la page principale ouvre une **fiche en lecture seule** (âge, sexe, situation,
-  et l'apport recommandé de chaque nutriment suivi) — rien n'y est modifiable directement. Le bouton « Modifier »
-  de cette fiche ouvre le formulaire : âge, sexe et, pour une femme, sa **situation** (un seul choix) : non réglée,
-  réglée, abondamment réglée, enceinte ou allaitement. Le bouton « Enregistrer » est en haut (barre fixe, toujours
-  visible) et en bas ; il ramène à la fiche. Sans réponse (nouveau profil), la situation proposée est « réglée »
-  entre 12 et 50 ans (réglable dans `config.toml`), « non réglée » sinon.
-- **Cercles de complétion** : juste sous le titre, un cercle par nutriment suivi (orange, vert avec une coche une
-  fois l'apport recommandé atteint). Jusqu'à 6 nutriments suivis, ils forment une grille centrée ; au-delà, ils
+- **Profil** : l'icône en haut de la page principale ouvre une **fiche en lecture seule** : qui tu es, puis une
+  carte par groupe de nutriments avec le repère journalier de chaque nutriment suivi (« 15 mg », « 5 g max » ou
+  « sans repère ») — rien n'y est modifiable directement. Le bouton « Modifier » ouvre le formulaire : âge, sexe
+  et, pour une femme, sa **situation** (un seul choix) : non réglée, réglée, abondamment réglée, enceinte ou
+  allaitement. Les nutriments se choisissent par **pastilles**, dans une carte par groupe (avec sa description) :
+  on touche une pastille pour la cocher ou la décocher, chaque carte a son compteur et son bouton « Tout cocher /
+  Tout décocher », et un compteur général indique combien sont suivis. Le bouton « Enregistrer » est en haut
+  (barre fixe, toujours visible) et en bas ; il ramène à la fiche. Un nouveau profil suit les groupes de
+  `default_groups` (minéraux et vitamines) ; la situation proposée est « réglée » entre 12 et 50 ans (réglable
+  dans `config.toml`), « non réglée » sinon.
+- **Trois sortes de nutriments**, selon leur repère (réglé dans `config.toml`) :
+  - *à atteindre* (fer, protéines, fibres, eau...) : orange tant que l'apport recommandé n'est pas atteint, vert
+    avec une coche ensuite ;
+  - *à limiter* (sucres, sel, alcool) : bleu-vert tant que le maximum n'est pas dépassé, rouge au-delà ;
+  - *sans repère* (glucose, fructose, lactose, amidon, cholestérol...) : seule la quantité du jour est affichée.
+
+  Cette règle vaut partout : cercles de l'accueil, cases et moyennes de l'onglet Semaine, détail d'un nutriment,
+  barres de l'onglet Comparer.
+- **Cercles de complétion** : juste sous le titre, un cercle par nutriment suivi. Jusqu'à 6 nutriments suivis, ils forment une grille centrée ; au-delà, ils
   restent sur 2 lignes (`ring_rows_max`) et on fait glisser la bande vers la gauche pour voir les autres — les
   premiers de la liste sont toujours visibles, et le repas du jour reste à l'écran. Leur taille dépend du nombre de
   nutriments suivis : un seul -> un très grand cercle (`ring_size_max`), beaucoup -> des cercles plus petits
@@ -116,10 +128,11 @@ Tout ce qui se règle sans toucher au code est dans `config/` : `config.toml` (t
 | Section | Contenu |
 | --- | --- |
 | `[app]` | titre, phrase d'accroche et durée de la page de démarrage, fichier d'aliments (`foods.csv`), nombre de suggestions affichées, années d'historique du calendrier (`history_years`), nombre minimal de semaines consultables (`weeks_min`), seuil d'apparition de la recherche dans Mes aliments (`my_foods_search_min`), nombre d'aliments comparés et de raccourcis dans l'onglet Comparer (`compare_max_foods`, `compare_suggestions`) |
-| `[profile]` | âge par défaut, âges min/max acceptés, tranche d'âge où « règles » est coché par défaut |
-| `[display]` | taille et épaisseur des cercles, nombre maximal de lignes de cercles (`ring_rows_max`), couleurs (en cours / atteint / aliment perso), seuil « apport bas » de l'onglet Semaine (`low_threshold`, en %, et `color_low`), couleurs des aliments dans le détail d'un cercle (`chart_colors`, `chart_color_other`), glissement du calendrier de la semaine (`swipe_switch_fraction`, `swipe_switch_speed`, `swipe_snap_ms`, `week_arrow_ms`), échelle maximale des barres de l'onglet Comparer (`compare_scale_max`) |
+| `[profile]` | âge par défaut, âges min/max acceptés, tranche d'âge où « règles » est coché par défaut, groupes de nutriments suivis par un nouveau profil (`default_groups`) |
+| `[display]` | taille et épaisseur des cercles, nombre maximal de lignes de cercles (`ring_rows_max`), couleurs (en cours / atteint / aliment perso, nutriment à limiter `color_limit`, sans repère `color_info`), seuil « apport bas » de l'onglet Semaine (`low_threshold`, en %, et `color_low`), couleurs des aliments dans le détail d'un cercle (`chart_colors`, `chart_color_other`), glissement du calendrier de la semaine (`swipe_switch_fraction`, `swipe_switch_speed`, `swipe_snap_ms`, `week_arrow_ms`), échelle maximale des barres de l'onglet Comparer (`compare_scale_max`) |
 | `[foods_build]` | réglages de `build_foods.py` : groupe requis, traitement de `< x` et de `traces` |
-| `[nutrients.<clé>]` | un bloc par nutriment : nom, unité, groupe, colonne du CSV, colonnes Ciqual, **apports de référence** |
+| `[groups."<nom>"]` | facultatif, un bloc par groupe de nutriments : la phrase (`description`) et l'icône (`icon`) affichées dans le profil |
+| `[nutrients.<clé>]` | un bloc par nutriment : nom, unité, groupe, colonne du CSV, colonnes Ciqual, **repère** (`reference`, facultatif) et son sens (`goal`) |
 
 Les références sont des tranches d'âge `[[âge_max_inclus, valeur], ...]` :
 
@@ -275,10 +288,19 @@ Nettoyage : `-` = manquant (compté 0), virgules décimales converties ; `traces
 
 ## Ajouter un nutriment
 
-1. Ajoute un bloc `[nutrients.<clé>]` dans `config/config.toml` (nom, unité, groupe, `csv_column`, `ciqual`, références).
-2. Relance `build_foods.py` pour créer la colonne dans `foods.csv`.
+1. Ajoute un bloc `[nutrients.<clé>]` dans `config/config.toml` (nom, unité, groupe, `csv_column`, `ciqual`).
+2. Choisis son repère :
+   - *à atteindre* : un bloc `[nutrients.<clé>.reference]` (tranches d'âge `homme` et `femme`, voir plus haut) ;
+   - *à limiter* : le même bloc, plus `goal = "max"` dans le bloc du nutriment ;
+   - *sans repère* : pas de bloc `reference` — l'app affichera seulement la quantité.
+3. Relance `build_foods.py` pour créer la colonne dans `foods.csv`.
 
-Aucun changement de code : la case du profil et le cercle de la page principale se génèrent automatiquement.
+Aucun changement de code : la pastille du profil, le cercle de l'accueil, la ligne de la semaine et la carte de
+l'onglet Comparer se génèrent automatiquement. Un nouveau `group` crée une nouvelle carte dans le profil ; pour
+lui donner une phrase et une icône, ajoute un bloc `[groups."<nom>"]`.
+
+Les repères des macronutriments (protéines, glucides, lipides) sont des moyennes : les besoins réels dépendent du
+poids et de la dépense d'énergie, que le profil ne connaît pas (voir les commentaires de `config.toml`).
 
 ## Unités par défaut
 

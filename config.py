@@ -27,6 +27,10 @@ DEFAULT_RESOURCES_PATH = CONFIG_DIR / "ressources.toml"
 BAND_KEYS = ("homme", "femme", "femme_regles", "femme_regles_abondantes")  # tranches d'âge [[âge_max, valeur], ...]
 SCALAR_KEYS = ("grossesse", "allaitement")  # valeur unique
 REQUIRED_BANDS = ("homme", "femme")
+# Sens du repère d'un nutriment : un apport à atteindre (défaut) ou un maximum à ne pas dépasser.
+# Un nutriment sans bloc « reference » n'a pas de repère : goal vaut alors None.
+GOAL_MIN, GOAL_MAX = "min", "max"
+GROUP_DEFAULTS = {"description": "", "icon": "CATEGORY_OUTLINED"}
 
 APP_DEFAULTS = {
     "title": "Nutri-Suivi",
@@ -45,6 +49,7 @@ PROFILE_DEFAULTS = {
     "age_min": 1,
     "age_max": 120,
     "menstruation_age_range": [12, 50],
+    "default_groups": [],  # groupes de nutriments suivis par un nouveau profil ([] = tous)
 }
 DISPLAY_DEFAULTS = {
     "ring_size": 72,  # taille des cercles quand beaucoup de nutriments sont suivis
@@ -56,6 +61,8 @@ DISPLAY_DEFAULTS = {
     "color_todo": "#FB8C00",
     "color_done": "#43A047",
     "color_custom_food": "#EF6C00",
+    "color_limit": "#00897B",  # nutriment à limiter, tant que le maximum n'est pas dépassé
+    "color_info": "#78909C",  # nutriment sans repère
     # Détail d'un cercle : une couleur par aliment, dans cet ordre (le plus gros apport en premier),
     # puis chart_color_other pour le regroupement des plus petits apports.
     "chart_colors": ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7"],
@@ -140,15 +147,80 @@ def _ciqual(value, where: str) -> list:
     return value
 
 
+def _goal(block: dict, where: str) -> str | None:
+    """Sens du repère d'un nutriment : GOAL_MIN / GOAL_MAX s'il a un bloc « reference », sinon None."""
+    goal = block.get("goal")
+    if "reference" not in block:
+        if goal is not None:
+            raise ConfigError(f"{where} : « goal » n'a pas de sens sans bloc [nutrients.<clé>.reference]")
+        return None
+    if goal is None:
+        return GOAL_MIN
+    if goal not in (GOAL_MIN, GOAL_MAX):
+        raise ConfigError(f'{where} : goal doit valoir "{GOAL_MIN}" ou "{GOAL_MAX}" (reçu {goal!r})')
+    return goal
+
+
+def _reference(ref, where: str, age_max: int) -> dict:
+    """Valide un bloc [nutrients.<clé>.reference] : tranches d'âge et valeurs uniques."""
+    if not isinstance(ref, dict):
+        raise ConfigError(f"{where}.reference doit être une table")
+    extra = set(ref) - set(BAND_KEYS) - set(SCALAR_KEYS)
+    if extra:
+        raise ConfigError(
+            f"{where}.reference : clés inconnues {sorted(extra)} (autorisées : {sorted(BAND_KEYS + SCALAR_KEYS)})"
+        )
+    for req in REQUIRED_BANDS:
+        if req not in ref:
+            raise ConfigError(f"{where}.reference : « {req} » manquant")
+    parsed: dict = {}
+    for bk in BAND_KEYS:
+        if bk in ref:
+            parsed[bk] = _bands(ref[bk], f"{where}.reference.{bk}", age_max)
+    for sk in SCALAR_KEYS:
+        if sk in ref:
+            parsed[sk] = _number(ref[sk], f"{where}.reference.{sk}", minimum=0)
+    return parsed
+
+
+def _groups(raw_groups, group_names: list[str]) -> list[dict]:
+    """Groupes de nutriments, dans l'ordre des nutriments, avec leur description et leur icône
+    ([groups."<nom>"], facultatif : un groupe non décrit prend GROUP_DEFAULTS)."""
+    if not isinstance(raw_groups, dict):
+        raise ConfigError("[groups] doit être une table")
+    unknown = set(raw_groups) - set(group_names)
+    if unknown:
+        raise ConfigError(f"[groups] : groupes inconnus {sorted(unknown)} (groupes des nutriments : {group_names})")
+    groups = []
+    for name in group_names:
+        block = raw_groups.get(name, {})
+        where = f'[groups."{name}"]'
+        if not isinstance(block, dict):
+            raise ConfigError(f"{where} doit être une table")
+        extra = set(block) - set(GROUP_DEFAULTS)
+        if extra:
+            raise ConfigError(f"{where} : clés inconnues {sorted(extra)} (autorisées : {sorted(GROUP_DEFAULTS)})")
+        for field, value in block.items():
+            if not isinstance(value, str):
+                raise ConfigError(f"{where} : « {field} » doit être un texte")
+        groups.append({"name": name, **GROUP_DEFAULTS, **block})
+    return groups
+
+
 def load_config(path: str | Path | None = None) -> dict:
     """Lit et valide la configuration. Retourne un dict prêt à l'emploi :
 
-    {"app", "profile", "display", "foods_build", "nutrients": [...], "references": {...}}
+    {"app", "profile", "display", "foods_build", "nutrients": [...], "references": {...}, "groups": [...]}
+
+    Un nutriment : {"key", "label", "unit", "group", "col", "ciqual", "goal"} — "goal" vaut
+    GOAL_MIN (apport à atteindre), GOAL_MAX (maximum à ne pas dépasser) ou None (pas de repère ;
+    il est alors absent de "references"). Un groupe : {"name", "description", "icon"}, dans
+    l'ordre d'apparition des nutriments.
     """
     path = Path(path or os.environ.get("NUTRI_CONFIG") or DEFAULT_PATH)
     raw = _read_toml(path)
 
-    unknown = set(raw) - {"app", "profile", "display", "foods_build", "nutrients"}
+    unknown = set(raw) - {"app", "profile", "display", "foods_build", "groups", "nutrients"}
     if unknown:
         raise ConfigError(f"Sections inconnues dans {path.name} : {sorted(unknown)}")
 
@@ -210,14 +282,14 @@ def load_config(path: str | Path | None = None) -> dict:
         where = f"[nutrients.{key}]"
         if not isinstance(block, dict):
             raise ConfigError(f"{where} doit être une table")
-        allowed = {"label", "unit", "group", "csv_column", "ciqual", "reference"}
+        allowed = {"label", "unit", "group", "csv_column", "ciqual", "reference", "goal"}
         extra = set(block) - allowed
         if extra:
             raise ConfigError(f"{where} : clés inconnues {sorted(extra)} (autorisées : {sorted(allowed)})")
-        for req in ("label", "unit", "group", "csv_column", "reference"):
+        for req in ("label", "unit", "group", "csv_column"):
             if req not in block:
                 raise ConfigError(f"{where} : « {req} » manquant")
-            if req != "reference" and not isinstance(block[req], str):
+            if not isinstance(block[req], str):
                 raise ConfigError(f"{where} : « {req} » doit être un texte")
         if block["csv_column"] in seen_columns:
             raise ConfigError(
@@ -226,25 +298,9 @@ def load_config(path: str | Path | None = None) -> dict:
             )
         seen_columns[block["csv_column"]] = key
 
-        ref = block["reference"]
-        if not isinstance(ref, dict):
-            raise ConfigError(f"{where}.reference doit être une table")
-        extra = set(ref) - set(BAND_KEYS) - set(SCALAR_KEYS)
-        if extra:
-            raise ConfigError(
-                f"{where}.reference : clés inconnues {sorted(extra)} (autorisées : {sorted(BAND_KEYS + SCALAR_KEYS)})"
-            )
-        for req in REQUIRED_BANDS:
-            if req not in ref:
-                raise ConfigError(f"{where}.reference : « {req} » manquant")
-        parsed: dict = {}
-        for bk in BAND_KEYS:
-            if bk in ref:
-                parsed[bk] = _bands(ref[bk], f"{where}.reference.{bk}", age_max)
-        for sk in SCALAR_KEYS:
-            if sk in ref:
-                parsed[sk] = _number(ref[sk], f"{where}.reference.{sk}", minimum=0)
-        references[key] = parsed
+        goal = _goal(block, where)
+        if goal is not None:
+            references[key] = _reference(block["reference"], where, age_max)
 
         nutrients.append(
             {
@@ -254,14 +310,20 @@ def load_config(path: str | Path | None = None) -> dict:
                 "group": block["group"],
                 "col": block["csv_column"],
                 "ciqual": _ciqual(block.get("ciqual", []), f"{where}.ciqual"),
+                "goal": goal,
             }
         )
 
-    groups = {n["group"] for n in nutrients}
-    if build["required_group"] and build["required_group"] not in groups:
+    group_names = list(dict.fromkeys(n["group"] for n in nutrients))  # dans l'ordre des nutriments
+    if build["required_group"] and build["required_group"] not in group_names:
         raise ConfigError(
             f"[foods_build] required_group = {build['required_group']!r} ne correspond à aucun groupe "
-            f"de nutriments ({sorted(groups)})"
+            f"de nutriments ({sorted(group_names)})"
+        )
+    default_groups = profile["default_groups"]
+    if not isinstance(default_groups, list) or set(default_groups) - set(group_names):
+        raise ConfigError(
+            f"[profile] default_groups : liste de groupes de nutriments attendue, parmi {sorted(group_names)}"
         )
 
     return {
@@ -271,6 +333,7 @@ def load_config(path: str | Path | None = None) -> dict:
         "foods_build": build,
         "nutrients": nutrients,
         "references": references,
+        "groups": _groups(raw.get("groups", {}), group_names),
     }
 
 

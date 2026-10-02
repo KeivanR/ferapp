@@ -9,19 +9,46 @@ from __future__ import annotations
 
 import flet as ft
 
-from nutrition import GRAMS_UNIT, find_food, normalize, parse_grams, search_foods
+from nutrition import GOAL_MAX, GRAMS_UNIT, find_food, normalize, parse_grams, search_foods
 
 from .context import AppContext
 from .style import COLOR_CUSTOM, SWIPE_SNAP_MS, SWIPE_SWITCH_FRACTION, SWIPE_SWITCH_SPEED
 
 
 def fmt(value: float) -> str:
-    """12.0 -> '12', 3.456 -> '3.5', 0.04 -> '0.04'."""
+    """12.0 -> '12', 3.456 -> '3.5', 0.04 -> '0.04', 0 -> '0'."""
+    if value == 0:
+        return "0"
     if value >= 100:
         return f"{value:.0f}"
     if value >= 10:
         return f"{value:.0f}" if abs(value - round(value)) < 0.05 else f"{value:.1f}"
     return f"{value:.1f}" if value >= 1 else f"{value:.2f}"
+
+
+def reference_label(nutrient: dict, reference: float | None) -> str:
+    """Le repère d'un nutriment en clair : « 15 mg », « 5 g max » ou « sans repère »."""
+    if nutrient["goal"] is None or reference is None:
+        return "sans repère"
+    text = f"{fmt(reference)} {nutrient['unit']}"
+    return f"{text} max" if nutrient["goal"] == GOAL_MAX else text
+
+
+def group_icon(group: dict) -> ft.IconData:
+    """Icône d'un groupe de nutriments ([groups] de config.toml) ; icône générique si le nom est inconnu."""
+    return getattr(ft.Icons, group["icon"], ft.Icons.CATEGORY_OUTLINED)
+
+
+def icon_badge(icon: ft.IconData, size: int = 40) -> ft.Control:
+    """Icône dans une pastille ronde aux couleurs du thème (en-tête d'une carte)."""
+    return ft.Container(
+        ft.Icon(icon, size=size // 2, color=ft.Colors.PRIMARY),
+        width=size,
+        height=size,
+        border_radius=size // 2,
+        bgcolor=ft.Colors.PRIMARY_CONTAINER,
+        alignment=ft.Alignment.CENTER,
+    )
 
 
 def plural(count: int, word: str) -> str:

@@ -19,8 +19,10 @@ from typing import Callable
 import flet as ft
 import flet.canvas as cv
 
-from .style import COLOR_DONE, COLOR_TODO, RING_ROWS_MAX, RING_SIZE, RING_SIZE_MAX, RING_STROKE
-from .widgets import fmt
+from nutrition import STATUS_DONE, STATUS_INFO, STATUS_OVER, intake_ratio, intake_status
+
+from .style import RING_ROWS_MAX, RING_SIZE, RING_SIZE_MAX, RING_STROKE, status_color
+from .widgets import fmt, reference_label
 
 GRID_SPACING = 8  # espace entre deux cercles, horizontalement et verticalement
 STRIP_ROW_SPACING = 4  # espace entre les lignes de la bande qui défile (plus serrée que la grille)
@@ -47,36 +49,58 @@ def stroke_for(size: int) -> int:
     return max(RING_STROKE, round(RING_STROKE * size / RING_SIZE))
 
 
-def ring_center(ratio: float, size: int, color: str) -> ft.Control:
-    """Contenu du centre d'un cercle : une coche si l'apport est atteint, sinon le pourcentage."""
-    if ratio >= 1:
+def ring_center(status: str, ratio: float | None, amount: float, size: int, color: str) -> ft.Control:
+    """Contenu du centre d'un cercle : une coche si l'apport à atteindre l'est ; le pourcentage du
+    repère sinon (en rouge si un maximum est dépassé) ; la quantité seule quand un pourcentage n'a
+    pas de sens (nutriment sans repère, ou maximum nul)."""
+    if status == STATUS_DONE:
         return ft.Icon(ft.Icons.CHECK, color=color, size=max(28, size // 4))
-    return ft.Text(f"{ratio * 100:.0f}%", weight=ft.FontWeight.BOLD, size=max(16, size // 6))
+    text = fmt(amount) if ratio is None else f"{ratio * 100:.0f}%"
+    return ft.Text(
+        text,
+        weight=ft.FontWeight.BOLD,
+        size=max(16, size // 6),
+        color=color if status == STATUS_OVER else None,
+    )
+
+
+def ring_caption(nutrient: dict, status: str, amount: float, reference: float | None) -> str:
+    """Ligne sous le nom : « 1.5 / 15 mg », « 3 / 5 g max », ou « g · sans repère » (la quantité
+    est alors déjà au centre du cercle)."""
+    if status == STATUS_INFO:
+        return f"{nutrient['unit']} · sans repère"
+    return f"{fmt(amount)} / {reference_label(nutrient, reference)}"
 
 
 def nutrient_ring(
     nutrient: dict,
-    ratio: float,
-    total: float,
-    recommended: float,
+    amount: float,
+    reference: float | None,
     size: int,
     on_click: Callable[[dict], None] | None = None,
 ) -> ft.Control:
-    """Un cercle de la grille : progression (orange, vert une fois l'apport atteint), pourcentage
-    ou coche au centre, nom du nutriment et quantité du jour / apport recommandé."""
-    color = COLOR_DONE if ratio >= 1 else COLOR_TODO
+    """Un cercle de la grille, selon le repère du nutriment (nutrition.intake_status) :
+    - apport à atteindre : la progression, orange puis verte avec une coche une fois atteint ;
+    - maximum à ne pas dépasser : la part du maximum déjà consommée, puis tout rouge au-delà ;
+    - sans repère : un cercle vide avec la quantité du jour au centre."""
+    status = intake_status(nutrient, amount, reference)
+    ratio = intake_ratio(amount, reference)
+    color = status_color(status)
+    filled = 1.0 if status == STATUS_OVER else min(ratio or 0.0, 1.0)
     stroke = stroke_for(size)
     ring = ft.Stack(
         [
             ft.ProgressRing(
-                value=min(ratio, 1.0),
+                value=filled,
                 stroke_width=stroke,
                 width=size,
                 height=size,
                 color=color,
                 bgcolor=TRACK_COLOR,
             ),
-            ft.Container(ring_center(ratio, size, color), width=size, height=size, alignment=ft.Alignment.CENTER),
+            ft.Container(
+                ring_center(status, ratio, amount, size, color), width=size, height=size, alignment=ft.Alignment.CENTER
+            ),
         ],
         width=size,
         height=size,
@@ -87,11 +111,7 @@ def nutrient_ring(
                 ring,
                 ft.Container(height=stroke // 2),  # le trait déborde aussi sous le cercle
                 ft.Text(nutrient["label"], weight=ft.FontWeight.W_600, size=LABEL_SIZE),
-                ft.Text(
-                    f"{fmt(total)} / {fmt(recommended)} {nutrient['unit']}",
-                    size=AMOUNT_SIZE,
-                    color=ft.Colors.GREY_700,
-                ),
+                ft.Text(ring_caption(nutrient, status, amount, reference), size=AMOUNT_SIZE, color=ft.Colors.GREY_700),
             ],
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             spacing=3,
@@ -109,17 +129,14 @@ def nutrient_ring(
 
 def rings_grid(
     nutrients: list[dict],
-    ratios: dict[str, float],
     totals: dict[str, float],
-    recommended: dict[str, float],
+    recommended: dict[str, float | None],
     on_click: Callable[[dict], None] | None = None,
 ) -> ft.Control:
     """Les cercles de l'accueil : grille centrée s'ils tiennent sur RING_ROWS_MAX lignes, sinon bande
     qui défile horizontalement (rings_strip)."""
     size = ring_size_for(len(nutrients))
-    rings = [
-        nutrient_ring(n, ratios[n["key"]], totals[n["key"]], recommended[n["key"]], size, on_click) for n in nutrients
-    ]
+    rings = [nutrient_ring(n, totals[n["key"]], recommended[n["key"]], size, on_click) for n in nutrients]
     if len(rings) > RINGS_PER_ROW * RING_ROWS_MAX:
         return rings_strip(rings, RING_ROWS_MAX)
     # Le Row(wrap=True) est placé dans un Container aligné (et non dans un autre Row) : il reçoit

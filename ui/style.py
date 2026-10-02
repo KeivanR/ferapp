@@ -8,12 +8,14 @@ cotes de mise en page propres à un écran (hauteur d'une ligne, marge...) reste
 
 import flet as ft
 
-from nutrition import CONFIG
+from nutrition import CONFIG, STATUS_DONE, STATUS_INFO, STATUS_OVER, STATUS_TODO, STATUS_WITHIN
 
 COLOR_LOW = CONFIG["display"]["color_low"]  # apport bas (sous LOW_THRESHOLD)
 COLOR_TODO = CONFIG["display"]["color_todo"]  # apport en cours, pas encore atteint
 COLOR_DONE = CONFIG["display"]["color_done"]  # apport recommandé atteint
 COLOR_CUSTOM = CONFIG["display"]["color_custom_food"]  # aliments hors base officielle
+COLOR_LIMIT = CONFIG["display"]["color_limit"]  # nutriment à limiter, maximum pas dépassé
+COLOR_INFO = CONFIG["display"]["color_info"]  # nutriment sans repère
 LOW_THRESHOLD = CONFIG["display"]["low_threshold"] / 100  # en fraction de l'apport recommandé
 RING_SIZE = CONFIG["display"]["ring_size"]  # beaucoup de nutriments suivis
 RING_SIZE_MAX = CONFIG["display"]["ring_size_max"]  # un seul nutriment suivi
@@ -40,8 +42,18 @@ COMPARE_SCALE_MAX = CONFIG["display"]["compare_scale_max"] / 100  # bout de l'ax
 CARD_SHADOW = ft.BoxShadow(blur_radius=10, color=ft.Colors.with_opacity(0.08, ft.Colors.BLACK), offset=ft.Offset(0, 2))
 
 
-def level_color(ratio: float) -> str:
-    """Couleur d'un taux de complétion (1.0 = apport recommandé atteint) : bas, en cours ou atteint."""
-    if ratio >= 1:
-        return COLOR_DONE
-    return COLOR_LOW if ratio < LOW_THRESHOLD else COLOR_TODO
+STATUS_COLORS = {
+    STATUS_TODO: COLOR_TODO,
+    STATUS_DONE: COLOR_DONE,
+    STATUS_WITHIN: COLOR_LIMIT,
+    STATUS_OVER: COLOR_LOW,
+    STATUS_INFO: COLOR_INFO,
+}
+
+
+def status_color(status: str, ratio: float | None = None, flag_low: bool = False) -> str:
+    """Couleur d'un apport selon sa situation (nutrition.intake_status). Avec `flag_low`, un apport
+    à atteindre encore sous LOW_THRESHOLD prend la couleur « bas » (onglet Semaine)."""
+    if flag_low and status == STATUS_TODO and ratio is not None and ratio < LOW_THRESHOLD:
+        return COLOR_LOW
+    return STATUS_COLORS[status]

@@ -30,10 +30,10 @@ from comparison import (
     slot_letter,
     valid_selection,
 )
-from nutrition import find_food, recommended_intakes, search_foods, selected_nutrients
+from nutrition import GOAL_MAX, GOAL_MIN, find_food, recommended_intakes, search_foods, selected_nutrients
 
 from .context import AppContext
-from .layout import screen_title, show_screen
+from .layout import card, screen_title, show_screen
 from .style import CHART_COLORS, COMPARE_MAX_FOODS, COMPARE_SCALE_MAX, COMPARE_SUGGESTIONS
 from .widgets import fmt, make_food_input
 
@@ -109,11 +109,14 @@ def bar(ratio: float, scale: float, color: str) -> ft.Control:
 
 
 def value_text(share: dict, unit: str, best: bool) -> ft.Control:
-    """« 3.3 mg · 22 % » ; en gras pour l'aliment qui en apporte le plus."""
+    """« 3.3 mg · 22 % » (ou « 3.3 g » sans repère) ; en gras pour l'aliment qui en apporte le plus."""
     if share["amount"] <= 0:
         return ft.Text("–", size=12, color=ft.Colors.GREY_500, width=VALUE_WIDTH, text_align=ft.TextAlign.RIGHT)
+    text = f"{fmt(share['amount'])} {unit}"
+    if share["ratio"] is not None:
+        text += f" · {share['ratio'] * 100:.0f} %"
     return ft.Text(
-        f"{fmt(share['amount'])} {unit} · {share['ratio'] * 100:.0f} %",
+        text,
         size=12,
         weight=ft.FontWeight.BOLD if best else None,
         color=None if best else MUTED,
@@ -150,33 +153,50 @@ def reference_line(scale: float) -> ft.Control:
     )
 
 
-def card(content: ft.Control) -> ft.Control:
-    return ft.Container(content, padding=14, border_radius=14, bgcolor=ft.Colors.SURFACE_CONTAINER_LOWEST)
+def reference_caption(nutrient: dict, recommended: float | None) -> str:
+    """À droite du nom du nutriment : « recommandé : 15 mg », « maximum : 5 g » ou « sans repère »."""
+    if nutrient["goal"] is None or recommended is None:
+        return "sans repère"
+    word = "maximum" if nutrient["goal"] == GOAL_MAX else "recommandé"
+    return f"{word} : {fmt(recommended)} {nutrient['unit']}"
 
 
 def nutrient_card(
-    nutrient: dict, recommended: float, selection: list[dict], shares: dict[int, dict[str, dict]], scale: float
+    nutrient: dict, recommended: float | None, selection: list[dict], shares: dict[int, dict[str, dict]], scale: float
 ) -> ft.Control:
-    """La carte d'un nutriment : son nom, l'apport recommandé, et une barre par aliment."""
+    """La carte d'un nutriment : son nom, son repère, et une barre par aliment.
+
+    Avec un repère, la barre est la part de ce repère, sur l'échelle `scale` commune à toutes les
+    cartes. Sans repère (ou avec un maximum nul), il n'y a pas de pourcentage : les barres de la
+    carte se comparent entre elles, la plus longue étant pleine."""
     key = nutrient["key"]
-    best = best_slots(shares, key)
+    # L'aliment qui en apporte le plus n'est mis en avant que pour un apport à atteindre.
+    best = best_slots(shares, key) if nutrient["goal"] == GOAL_MIN else set()
     header = ft.Row(
         [
             ft.Text(nutrient["label"], size=15, weight=ft.FontWeight.W_600, expand=True),
-            ft.Text(f"recommandé : {fmt(recommended)} {nutrient['unit']}", size=12, color=MUTED),
+            ft.Text(reference_caption(nutrient, recommended), size=12, color=MUTED),
         ],
         vertical_alignment=ft.CrossAxisAlignment.END,
     )
+    own_scale = max(shares[s["slot"]][key]["amount"] for s in selection) if not recommended else None
+
+    def bar_of(slot: int) -> ft.Control:
+        share = shares[slot][key]
+        if own_scale is not None:  # pas de pourcentage : échelle propre à la carte
+            return bar(share["amount"], own_scale or 1.0, CHART_COLORS[slot])
+        return bar(share["ratio"], scale, CHART_COLORS[slot])
+
     if all(shares[s["slot"]][key]["amount"] <= 0 for s in selection):
         # Rien à comparer : une ligne suffit, plutôt qu'une pile de barres vides.
         none = "Cet aliment n'en apporte pas." if len(selection) == 1 else "Aucun de ces aliments n'en apporte."
-        return card(ft.Column([header, ft.Text(none, size=12, color=ft.Colors.GREY_500)], spacing=6))
+        return card(ft.Column([header, ft.Text(none, size=12, color=ft.Colors.GREY_500)], spacing=6), padding=14)
     rows = ft.Column(
         [
             ft.Row(
                 [
                     badge(s["slot"]),
-                    bar(shares[s["slot"]][key]["ratio"], scale, CHART_COLORS[s["slot"]]),
+                    bar_of(s["slot"]),
                     value_text(shares[s["slot"]][key], nutrient["unit"], s["slot"] in best),
                 ],
                 spacing=ROW_SPACING,
@@ -186,8 +206,8 @@ def nutrient_card(
         ],
         spacing=6,
     )
-    bars: ft.Control = ft.Stack([rows, reference_line(scale)]) if scale > 1 else rows
-    return card(ft.Column([header, bars], spacing=10))
+    bars: ft.Control = ft.Stack([rows, reference_line(scale)]) if scale > 1 and own_scale is None else rows
+    return card(ft.Column([header, bars], spacing=10), padding=14)
 
 
 def show_compare(ctx: AppContext) -> None:
@@ -311,11 +331,14 @@ def show_compare(ctx: AppContext) -> None:
         shares = {
             s["slot"]: nutrient_shares(s["name"], grams[s["slot"]], ctx.foods, recommended, keys) for s in selection
         }
-        scale = axis_max([share["ratio"] for by_key in shares.values() for share in by_key.values()], COMPARE_SCALE_MAX)
-        caption = f"Longueur des barres : part de ton apport journalier recommandé. Barre pleine = {scale * 100:.0f} %"
+        ratios = [share["ratio"] for by_key in shares.values() for share in by_key.values()]
+        scale = axis_max(ratios, COMPARE_SCALE_MAX)
+        caption = f"Longueur des barres : part de ton repère journalier. Barre pleine = {scale * 100:.0f} %"
         caption += ", trait vertical = 100 %." if scale > 1 else "."
-        if any(share["ratio"] > scale for by_key in shares.values() for share in by_key.values()):
+        if any(r is not None and r > scale for r in ratios):
             caption += " Un chevron » signale un apport qui dépasse l'échelle."
+        if any(r is None for r in ratios):
+            caption += " Sans repère, les barres d'une carte se comparent seulement entre elles."
         controls: list[ft.Control] = [ft.Text(caption, size=12, color=MUTED)]
         for group in dict.fromkeys(n["group"] for n in shown):
             controls.append(ft.Text(group, size=18, weight=ft.FontWeight.W_600))

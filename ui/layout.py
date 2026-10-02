@@ -1,5 +1,5 @@
-"""Mise en page commune à tous les écrans : show_screen() remplace le contenu de la page, et
-show_popup() affiche une carte par-dessus, sur un fond flouté.
+"""Mise en page commune à tous les écrans : show_screen() remplace le contenu de la page,
+show_popup() affiche une carte par-dessus, sur un fond flouté, et card() encadre un bloc.
 
 Chaque écran construit son contenu puis appelle show_screen(ctx, contenu, ...) au lieu de
 manipuler la page lui-même. Ainsi, la barre du haut, la barre de navigation du bas et les
@@ -69,6 +69,11 @@ def screen_title(
         [ft.Column(texts, spacing=0, expand=True), *([trailing] if trailing else [])],
         vertical_alignment=ft.CrossAxisAlignment.START,
     )
+
+
+def card(content: ft.Control, padding: int = 16) -> ft.Control:
+    """Carte blanche aux coins arrondis, pour regrouper un bloc d'informations sur le fond de la page."""
+    return ft.Container(content, padding=padding, border_radius=16, bgcolor=ft.Colors.SURFACE_CONTAINER_LOWEST)
 
 
 def show_popup(ctx: AppContext, content: ft.Control, *, width: int = POPUP_WIDTH) -> Callable[[], None]:

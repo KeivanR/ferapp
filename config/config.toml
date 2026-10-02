@@ -32,6 +32,9 @@ age_max = 120
 # Tranche d'âge où « réglée » est proposé par défaut pour une femme (nouveau profil, ou
 # ancien profil enregistré avant l'existence de ce choix) ; hors tranche : « non réglée ».
 menstruation_age_range = [12, 50]
+# Groupes de nutriments cochés d'office pour un nouveau profil (noms exacts des « group » plus bas).
+# Liste vide = tous. Les autres groupes restent à cocher dans le profil, selon ce qu'on veut suivre.
+default_groups = ["Minéraux", "Vitamines"]
 
 [display]
 # Diamètre des cercles de complétion (pixels) : ring_size quand beaucoup de nutriments sont
@@ -50,6 +53,9 @@ color_low = "#E53935"        # apport bas (rouge)
 color_todo = "#FB8C00"       # en cours (orange)
 color_done = "#43A047"       # apport recommandé atteint (vert)
 color_custom_food = "#EF6C00" # aliments personnalisés dans les suggestions (orange)
+# Nutriments à limiter (goal = "max") : color_limit tant que le maximum n'est pas dépassé, color_low au-delà.
+color_limit = "#00897B"      # sous le maximum (bleu-vert)
+color_info = "#78909C"       # nutriment sans repère : on affiche seulement la quantité (gris-bleu)
 
 # Détail d'un cercle (on touche un cercle de l'accueil) : une couleur par aliment, dans cet ordre,
 # du plus gros apport au plus petit. Au-delà, les plus petits apports sont regroupés en
@@ -85,12 +91,46 @@ traces_value = 0.0           # valeur utilisée pour "traces"
 # ----------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------
+#  Groupes de nutriments (facultatif) : la phrase et l'icône affichées dans le profil.
+#  Le nom entre guillemets doit être exactement le « group » des nutriments plus bas.
+#  icon : nom d'une icône Material de Flet (ft.Icons.XXX), voir https://flet.dev/docs/controls/icon
+# ----------------------------------------------------------------------------
+
+[groups."Minéraux"]
+description = "Fer, calcium, magnésium... : les carences les plus courantes."
+icon = "DIAMOND_OUTLINED"
+
+[groups."Vitamines"]
+description = "Vitamines A, D, E, K, C, B9 et B12."
+icon = "WB_SUNNY_OUTLINED"
+
+[groups."Macronutriments et eau"]
+description = "Les grands apports de la journée : protéines, glucides, lipides, fibres et eau."
+icon = "BOLT"
+
+[groups."Glucides en détail"]
+description = "Sucres et amidon, sucre par sucre : utile en cas d'intolérance (lactose, fructose...)."
+icon = "COOKIE_OUTLINED"
+
+[groups."À surveiller"]
+description = "Sel, alcool et cholestérol : plutôt à limiter qu'à atteindre."
+icon = "VISIBILITY_OUTLINED"
+
+# ----------------------------------------------------------------------------
 #  Nutriments suivis (l'ordre ici = l'ordre des cercles et des cases du profil)
 #
 #    label, unit, group : affichage
 #    csv_column         : colonne correspondante dans foods.csv
 #    ciqual             : (build_foods.py) expressions régulières sur l'en-tête Ciqual, essayées
 #                         dans l'ordre ; une sous-liste = valeurs additionnées (ex. D2 + D3)
+#    goal               : sens du repère. "min" (défaut) = apport à atteindre ;
+#                         "max" = maximum à ne pas dépasser (sel, sucres, alcool...).
+#
+#  Trois sortes de nutriments, selon leur repère :
+#    - à atteindre : un bloc [nutrients.<clé>.reference], sans « goal » ;
+#    - à limiter   : un bloc reference + goal = "max" ;
+#    - sans repère : pas de bloc reference (ni goal). L'app affiche alors seulement la
+#                    quantité du jour, sans pourcentage (ex. fructose, cholestérol).
 #
 #  Références [nutrients.<clé>.reference] :
 #    homme                      : tranches d'âge [[âge_max_inclus, valeur], ...]
@@ -276,3 +316,170 @@ homme = [[6, 1.5], [10, 2.5], [14, 3.5], [200, 4]]
 femme = [[6, 1.5], [10, 2.5], [14, 3.5], [200, 4]]
 grossesse = 4.5
 allaitement = 5
+
+# --- Macronutriments et eau -------------------------------------------------
+#  Protéines, glucides, lipides : les besoins réels dépendent du poids et de la dépense
+#  d'énergie, que le profil ne connaît pas. Les valeurs ci-dessous sont des repères moyens :
+#    - adultes : apports de référence de l'étiquetage (règlement UE 1169/2011, adulte-type à
+#      2000 kcal : glucides 260 g, lipides 70 g) ; protéines : 0,83 g/kg/j (EFSA/ANSES) pour un
+#      poids moyen (env. 60 kg pour une femme, 70 kg pour un homme) ;
+#    - enfants : mêmes repères réduits selon l'âge (ordres de grandeur).
+#  Fibres : 30 g/j pour un adulte (ANSES). Eau : apport total, boissons ET aliments (EFSA).
+
+[nutrients.proteines]
+label = "Protéines"
+unit = "g"
+group = "Macronutriments et eau"
+csv_column = "proteines_g"
+ciqual = ['^Protéines, N x facteur de Jones', '^Protéines, N x 6\.25']
+[nutrients.proteines.reference]
+homme = [[3, 13], [6, 18], [10, 30], [14, 45], [17, 57], [200, 58]]
+femme = [[3, 13], [6, 18], [10, 30], [14, 44], [17, 48], [200, 50]]
+grossesse = 60
+allaitement = 67
+
+[nutrients.glucides]
+label = "Glucides"
+unit = "g"
+group = "Macronutriments et eau"
+csv_column = "glucides_g"
+ciqual = ['^Glucides \(g']
+[nutrients.glucides.reference]
+homme = [[3, 145], [6, 195], [10, 235], [200, 260]]
+femme = [[3, 145], [6, 195], [10, 235], [200, 260]]
+
+[nutrients.lipides]
+label = "Lipides"
+unit = "g"
+group = "Macronutriments et eau"
+csv_column = "lipides_g"
+ciqual = ['^Lipides \(g']
+[nutrients.lipides.reference]
+homme = [[3, 40], [6, 52], [10, 63], [200, 70]]
+femme = [[3, 40], [6, 52], [10, 63], [200, 70]]
+
+[nutrients.fibres]
+label = "Fibres"
+unit = "g"
+group = "Macronutriments et eau"
+csv_column = "fibres_g"
+ciqual = ['^Fibres alimentaires']
+[nutrients.fibres.reference]
+homme = [[3, 10], [6, 14], [10, 16], [14, 19], [17, 21], [200, 30]]
+femme = [[3, 10], [6, 14], [10, 16], [14, 19], [17, 21], [200, 30]]
+
+[nutrients.eau]
+label = "Eau"
+unit = "g"                   # 1 g d'eau = 1 mL
+group = "Macronutriments et eau"
+csv_column = "eau_g"
+ciqual = ['^Eau \(g']
+[nutrients.eau.reference]
+homme = [[1, 1150], [3, 1300], [8, 1600], [13, 2100], [200, 2500]]
+femme = [[1, 1150], [3, 1300], [8, 1600], [13, 1900], [200, 2000]]
+grossesse = 2300
+allaitement = 2700
+
+# --- Glucides en détail -----------------------------------------------------
+#  Sucres (total) : maximum conseillé par l'ANSES (100 g/j pour un adulte ; l'ANSES compte les
+#  sucres hors lactose et galactose, alors que la colonne Ciqual « Sucres » les inclut : le
+#  repère est donc un peu sévère pour qui boit beaucoup de lait).
+#  Les sucres pris un à un et l'amidon n'ont pas de repère officiel : sans bloc reference.
+
+[nutrients.sucres]
+label = "Sucres"
+unit = "g"
+group = "Glucides en détail"
+csv_column = "sucres_g"
+ciqual = ['^Sucres \(g']
+goal = "max"
+[nutrients.sucres.reference]
+homme = [[7, 60], [12, 75], [200, 100]]
+femme = [[7, 60], [12, 75], [200, 100]]
+
+[nutrients.glucose]
+label = "Glucose"
+unit = "g"
+group = "Glucides en détail"
+csv_column = "glucose_g"
+ciqual = ['^Glucose \(g']
+
+[nutrients.fructose]
+label = "Fructose"
+unit = "g"
+group = "Glucides en détail"
+csv_column = "fructose_g"
+ciqual = ['^Fructose \(g']
+
+[nutrients.galactose]
+label = "Galactose"
+unit = "g"
+group = "Glucides en détail"
+csv_column = "galactose_g"
+ciqual = ['^Galactose \(g']
+
+[nutrients.saccharose]
+label = "Saccharose"
+unit = "g"
+group = "Glucides en détail"
+csv_column = "saccharose_g"
+ciqual = ['^Saccharose \(g']
+
+[nutrients.lactose]
+label = "Lactose"
+unit = "g"
+group = "Glucides en détail"
+csv_column = "lactose_g"
+ciqual = ['^Lactose \(g']
+
+[nutrients.maltose]
+label = "Maltose"
+unit = "g"
+group = "Glucides en détail"
+csv_column = "maltose_g"
+ciqual = ['^Maltose \(g']
+
+[nutrients.amidon]
+label = "Amidon"
+unit = "g"
+group = "Glucides en détail"
+csv_column = "amidon_g"
+ciqual = ['^Amidon \(g']
+
+# --- À surveiller -----------------------------------------------------------
+#  Sel : moins de 5 g/j pour un adulte (OMS) ; moins pour un enfant (ordres de grandeur).
+#  Alcool : repère français « maximum 2 verres par jour, et pas tous les jours » (1 verre
+#  standard = 10 g d'alcool pur) ; zéro pour les mineurs, pendant la grossesse et l'allaitement.
+#  Cholestérol : plus de limite officielle aujourd'hui, donc sans repère. Pour revenir à
+#  l'ancien repère de 300 mg/j, ajoute  goal = "max"  et un bloc reference à 300.
+
+[nutrients.sel]
+label = "Sel"
+unit = "g"
+group = "À surveiller"
+csv_column = "sel_g"
+ciqual = ['^Sel chlorure de sodium']
+goal = "max"
+[nutrients.sel.reference]
+homme = [[3, 2], [6, 3], [200, 5]]
+femme = [[3, 2], [6, 3], [200, 5]]
+
+[nutrients.alcool]
+label = "Alcool"
+unit = "g"
+group = "À surveiller"
+csv_column = "alcool_g"
+ciqual = ['^Alcool']
+goal = "max"
+[nutrients.alcool.reference]
+homme = [[17, 0], [200, 20]]
+femme = [[17, 0], [200, 20]]
+grossesse = 0
+allaitement = 0
+
+[nutrients.cholesterol]
+label = "Cholestérol"
+unit = "mg"
+group = "À surveiller"
+csv_column = "cholesterol_mg"
+ciqual = ['^Cholestérol']

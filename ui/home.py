@@ -12,7 +12,6 @@ import datetime
 import flet as ft
 
 from nutrition import (
-    completion,
     daily_totals,
     find_food,
     recommended_intakes,
@@ -125,8 +124,7 @@ def show_main(ctx: AppContext, day: datetime.date | None = None) -> None:
     def refresh():
         entries = ctx.entries_for(day)
         totals = daily_totals(entries, ctx.foods)
-        ratios = completion(totals, recommended)
-        rings_holder.content = rings_grid(shown, ratios, totals, recommended, on_click=open_nutrient_detail)
+        rings_holder.content = rings_grid(shown, totals, recommended, on_click=open_nutrient_detail)
         entries_col.controls = [build_entry_tile(i, e) for i, e in enumerate(entries)] or [
             ft.Text(
                 "Rien d'ajouté pour l'instant." if day == today else "Rien de noté ce jour-là.",

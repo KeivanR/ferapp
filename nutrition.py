@@ -5,7 +5,8 @@
 - apports de référence par nutriment selon le profil (âge, sexe, situation de la femme : règles,
   grossesse, allaitement),
   lus dans config.toml
-- calcul des apports du jour et du taux de complétion
+- calcul des apports du jour et de leur situation par rapport au repère de chaque nutriment
+  (apport à atteindre, maximum à ne pas dépasser, ou pas de repère : voir intake_status)
 
 IMPORTANT : les valeurs de référence de config.toml sont des ordres de grandeur inspirés
 des références EFSA / ANSES pour un premier prototype. Vérifie-les avant tout usage
@@ -19,14 +20,18 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from config import SCALAR_KEYS, load_config, load_default_units
+from config import GOAL_MAX, GOAL_MIN, SCALAR_KEYS, load_config, load_default_units
 
 # --------------------------------------------------------------------------- #
 # Nutriments et apports de référence : tout vient de config.toml
 # --------------------------------------------------------------------------- #
 CONFIG = load_config()
-NUTRIENTS: list[dict] = CONFIG["nutrients"]  # {"key", "label", "unit", "group", "col", "ciqual"}
-# Par nutriment : homme, femme, femme_regles, femme_regles_abondantes, grossesse, allaitement
+# {"key", "label", "unit", "group", "col", "ciqual", "goal"} ; "goal" : GOAL_MIN (apport à
+# atteindre), GOAL_MAX (maximum à ne pas dépasser) ou None (pas de repère).
+NUTRIENTS: list[dict] = CONFIG["nutrients"]
+GROUPS: list[dict] = CONFIG["groups"]  # {"name", "description", "icon"}, dans l'ordre des nutriments
+# Par nutriment qui a un repère : homme, femme, femme_regles, femme_regles_abondantes, grossesse,
+# allaitement. Un nutriment sans repère n'y figure pas.
 REFERENCES: dict[str, dict] = CONFIG["references"]
 SEARCH_LIMIT: int = CONFIG["app"]["suggestions_max"]
 AGE_MIN: int = CONFIG["profile"]["age_min"]
@@ -34,6 +39,9 @@ AGE_MAX: int = CONFIG["profile"]["age_max"]
 PERIOD_AGE_RANGE: tuple[int, int] = tuple(CONFIG["profile"]["menstruation_age_range"])
 
 ALL_KEYS = [n["key"] for n in NUTRIENTS]
+# Nutriments suivis par un nouveau profil : ceux des groupes [profile] default_groups (tous si vide).
+DEFAULT_GROUPS: list[str] = CONFIG["profile"]["default_groups"]
+DEFAULT_KEYS = [n["key"] for n in NUTRIENTS if not DEFAULT_GROUPS or n["group"] in DEFAULT_GROUPS]
 
 
 # Situations possibles pour une femme (une seule à la fois). Pour chacune : le libellé affiché et
@@ -58,8 +66,8 @@ class Profile:
     # Situation d'une femme (clé de WOMAN_STATUSES). None = pas renseignée : on déduit de l'âge
     # (« réglée » dans menstruation_age_range, sinon « non réglée »). Ignoré pour un homme.
     status: str | None = None
-    # Clés des nutriments affichés (choix multiple du profil). Par défaut : tous.
-    nutrients: list[str] = field(default_factory=lambda: list(ALL_KEYS))
+    # Clés des nutriments affichés (choix multiple du profil). Par défaut : DEFAULT_KEYS.
+    nutrients: list[str] = field(default_factory=lambda: list(DEFAULT_KEYS))
 
     def effective_status(self) -> str | None:
         """Situation utilisée pour les calculs : None pour un homme."""
@@ -79,7 +87,7 @@ class Profile:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Profile":
-        # Un ancien profil sans "nutrients" (ou avec des clés inconnues) retombe sur « tous ».
+        # Un ancien profil sans "nutrients" (ou avec des clés inconnues) retombe sur le choix par défaut.
         chosen = [k for k in d.get("nutrients", []) if k in ALL_KEYS]
         status = d.get("status")
         if status not in WOMAN_STATUSES:
@@ -96,7 +104,7 @@ class Profile:
             age=int(d.get("age", CONFIG["profile"]["default_age"])),
             sex=d.get("sex", "F"),
             status=status,
-            nutrients=chosen or list(ALL_KEYS),
+            nutrients=chosen or list(DEFAULT_KEYS),
         )
 
 
@@ -116,8 +124,9 @@ def recommended_intakes(
     profile: Profile,
     references: dict[str, dict] | None = None,
     nutrients: list[dict] | None = None,
-) -> dict[str, float]:
-    """Apport de référence journalier pour chaque nutriment, selon le profil.
+) -> dict[str, float | None]:
+    """Repère journalier de chaque nutriment, selon le profil : l'apport à atteindre ou le maximum
+    à ne pas dépasser (voir le "goal" du nutriment), ou None s'il n'a pas de repère.
 
     Pour une femme, la clé de référence dépend de sa situation (WOMAN_STATUSES) : on prend la
     première définie pour le nutriment, « femme » en dernier recours.
@@ -127,7 +136,10 @@ def recommended_intakes(
     nutrients = NUTRIENTS if nutrients is None else nutrients
     out: dict[str, float] = {}
     for n in nutrients:
-        ref = references[n["key"]]
+        ref = references.get(n["key"])
+        if ref is None:  # nutriment sans repère
+            out[n["key"]] = None
+            continue
         if profile.sex == "H":
             value = _band_value(ref["homme"], profile.age)
         else:
@@ -233,10 +245,12 @@ def entry_nutrients(entry: dict, foods: dict[str, dict]) -> dict[str, float]:
 def top_nutrient(
     entry: dict,
     foods: dict[str, dict],
-    recommended: dict[str, float],
+    recommended: dict[str, float | None],
     nutrients: list[dict],
 ) -> dict | None:
-    """Nutriment (parmi `nutrients`) que cette entrée apporte le plus.
+    """Nutriment (parmi ceux de `nutrients` qui ont un apport à atteindre) que cette entrée
+    apporte le plus. Les nutriments à limiter ou sans repère sont ignorés : « ce plat apporte
+    surtout du sel » n'est pas un point fort.
 
     Les quantités brutes ne sont pas comparables entre elles (mg, µg, et le potassium
     gagnerait toujours) : on compare donc la part de l'apport journalier recommandé.
@@ -245,8 +259,8 @@ def top_nutrient(
     amounts = entry_nutrients(entry, foods)
     best = None
     for n in nutrients:
-        amount, rec = amounts[n["key"]], recommended[n["key"]]
-        if amount <= 0 or not rec:
+        amount, rec = amounts[n["key"]], recommended.get(n["key"])
+        if amount <= 0 or not rec or n.get("goal", GOAL_MIN) != GOAL_MIN:
             continue
         share = amount / rec
         if best is None or share > best["share"]:
@@ -288,9 +302,37 @@ def daily_totals(entries: list[dict], foods: dict[str, dict]) -> dict[str, float
     return totals
 
 
-def completion(totals: dict[str, float], recommended: dict[str, float]) -> dict[str, float]:
-    """Ratio apport / recommandé (peut dépasser 1.0 ; l'affichage plafonne le cercle à 100 %)."""
-    return {k: (totals[k] / recommended[k] if recommended[k] else 0.0) for k in totals}
+def completion(totals: dict[str, float], recommended: dict[str, float | None]) -> dict[str, float]:
+    """Ratio apport / repère (peut dépasser 1.0 ; l'affichage plafonne le cercle à 100 %) ;
+    0.0 pour un nutriment sans repère. Pour l'affichage, préférer intake_ratio / intake_status."""
+    return {k: (totals[k] / recommended[k] if recommended.get(k) else 0.0) for k in totals}
+
+
+# --------------------------------------------------------------------------- #
+# Situation d'un apport par rapport au repère du nutriment
+# --------------------------------------------------------------------------- #
+STATUS_INFO = "info"  # pas de repère : on ne peut qu'afficher la quantité
+STATUS_TODO = "todo"  # apport à atteindre, pas encore atteint
+STATUS_DONE = "done"  # apport à atteindre, atteint
+STATUS_WITHIN = "within"  # maximum à ne pas dépasser, respecté
+STATUS_OVER = "over"  # maximum dépassé
+
+
+def intake_ratio(amount: float, reference: float | None) -> float | None:
+    """Part du repère couverte par `amount` (1.0 = 100 %, peut dépasser 1). None quand un
+    pourcentage n'a pas de sens : pas de repère, ou repère nul (ex. alcool pour un mineur)."""
+    return amount / reference if reference else None
+
+
+def intake_status(nutrient: dict, amount: float, reference: float | None) -> str:
+    """Où en est `amount` par rapport au repère du nutriment : une des constantes STATUS_*.
+    Un maximum nul (ex. alcool pour un mineur) est dépassé dès le premier gramme."""
+    goal = nutrient.get("goal", GOAL_MIN)
+    if goal is None or reference is None:
+        return STATUS_INFO
+    if goal == GOAL_MAX:
+        return STATUS_OVER if amount > reference else STATUS_WITHIN
+    return STATUS_DONE if amount >= reference else STATUS_TODO
 
 
 # --------------------------------------------------------------------------- #
