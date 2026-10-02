@@ -43,8 +43,12 @@ def suggestion_tile(ctx: AppContext, name: str, on_pick) -> ft.ListTile:
     )
 
 
-def make_food_input(ctx: AppContext, on_submit, on_food_changed=None, **kwargs) -> tuple[ft.TextField, ft.Column]:
+def make_food_input(
+    ctx: AppContext, on_submit, on_food_changed=None, on_pick=None, **kwargs
+) -> tuple[ft.TextField, ft.Column]:
     """Champ « Aliment » + colonne de suggestions qui se remplit pendant la frappe.
+
+    `on_pick(nom)`, si fourni, est rappelé quand une suggestion est touchée (et seulement là).
 
     `on_food_changed(texte)`, si fourni, est rappelé à chaque changement du texte (frappe ou
     clic sur une suggestion) — utilisé par QuantityInput pour recharger les unités disponibles
@@ -62,6 +66,8 @@ def make_food_input(ctx: AppContext, on_submit, on_food_changed=None, **kwargs) 
         field.error = None
         suggestions.controls = []
         notify()
+        if on_pick:
+            on_pick(name)
         ctx.page.update()
 
     def on_change(e):

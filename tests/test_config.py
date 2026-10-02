@@ -104,6 +104,8 @@ def test_duplicate_csv_column_is_rejected(tmp_path):
         ('[foods_build]\nrequired_group = "Inconnu"\n', "aucun groupe"),
         ("[app]\nsuggestions_max = 0\n", "suggestions_max"),
         ("[app]\nhistory_years = 0\n", "history_years"),
+        ("[app]\ncompare_max_foods = 50\n", "une couleur par aliment"),
+        ("[display]\ncompare_scale_max = 50\n", "compare_scale_max"),
         ("[app]\nweeks_min = 2.5\n", "entier"),
         ("[display]\nswipe_switch_fraction = 3\n", "swipe_switch_fraction"),
     ],

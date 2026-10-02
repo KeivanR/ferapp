@@ -32,6 +32,9 @@ WEEK_ARROW_MS = CONFIG["display"]["week_arrow_ms"]  # glissement déclenché par
 HISTORY_YEARS = CONFIG["app"]["history_years"]  # le calendrier de l'accueil remonte jusque-là
 WEEKS_MIN = CONFIG["app"]["weeks_min"]  # semaines consultables au minimum (onglet Semaine)
 MY_FOODS_SEARCH_MIN = CONFIG["app"]["my_foods_search_min"]  # la recherche apparaît à partir de là
+COMPARE_MAX_FOODS = CONFIG["app"]["compare_max_foods"]  # aliments comparés en même temps
+COMPARE_SUGGESTIONS = CONFIG["app"]["compare_suggestions"]  # raccourcis « souvent notés »
+COMPARE_SCALE_MAX = CONFIG["display"]["compare_scale_max"] / 100  # bout de l'axe au maximum (1.0 = 100 %)
 
 # Ombre légère des cartes (fenêtre de détail d'un cercle)
 CARD_SHADOW = ft.BoxShadow(blur_radius=10, color=ft.Colors.with_opacity(0.08, ft.Colors.BLACK), offset=ft.Offset(0, 2))

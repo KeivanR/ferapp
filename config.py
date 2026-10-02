@@ -37,6 +37,8 @@ APP_DEFAULTS = {
     "history_years": 5,  # le calendrier de l'accueil remonte jusque-là
     "weeks_min": 4,  # semaines consultables au minimum dans l'onglet Semaine
     "my_foods_search_min": 6,  # nombre d'aliments perso à partir duquel la recherche apparaît
+    "compare_max_foods": 4,  # aliments comparés en même temps (onglet Comparer)
+    "compare_suggestions": 6,  # raccourcis « souvent notés » proposés dans l'onglet Comparer
 }
 PROFILE_DEFAULTS = {
     "default_age": 30,
@@ -63,6 +65,7 @@ DISPLAY_DEFAULTS = {
     "swipe_switch_speed": 400,
     "swipe_snap_ms": 250,
     "week_arrow_ms": 350,
+    "compare_scale_max": 100,  # en %, bout de l'axe au maximum (onglet Comparer)
 }
 BUILD_DEFAULTS = {"required_group": "Minéraux", "below_limit_factor": 0.0, "traces_value": 0.0}
 
@@ -159,6 +162,8 @@ def load_config(path: str | Path | None = None) -> dict:
     _whole(app["history_years"], "[app] history_years", minimum=1)
     _whole(app["weeks_min"], "[app] weeks_min", minimum=1)
     _whole(app["my_foods_search_min"], "[app] my_foods_search_min", minimum=0)
+    _whole(app["compare_max_foods"], "[app] compare_max_foods", minimum=1)
+    _whole(app["compare_suggestions"], "[app] compare_suggestions", minimum=0)
     age_min = _number(profile["age_min"], "[profile] age_min", minimum=0)
     age_max = _number(profile["age_max"], "[profile] age_max", minimum=1)
     if age_min >= age_max:
@@ -177,6 +182,12 @@ def load_config(path: str | Path | None = None) -> dict:
     colors = display["chart_colors"]
     if not isinstance(colors, list) or not colors or not all(isinstance(c, str) and c.startswith("#") for c in colors):
         raise ConfigError('[display] chart_colors : liste de couleurs attendue, ex. ["#2a78d6", "#eb6834"]')
+    if app["compare_max_foods"] > len(colors):
+        raise ConfigError(
+            f"[app] compare_max_foods = {app['compare_max_foods']} : il faut une couleur par aliment comparé, "
+            f"or [display] chart_colors n'en a que {len(colors)}"
+        )
+    _number(display["compare_scale_max"], "[display] compare_scale_max", minimum=100)
     if display["low_threshold"] > 100:
         raise ConfigError("[display] low_threshold est un pourcentage : entre 0 et 100")
     fraction = _number(display["swipe_switch_fraction"], "[display] swipe_switch_fraction", minimum=0.05)

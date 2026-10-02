@@ -2,9 +2,9 @@
 branche le routeur entre écrans, puis affiche la page de démarrage.
 
 Chaque écran vit dans son propre fichier (splash.py, welcome.py, profile_view.py,
-profile_edit.py, custom_food.py, home.py, week.py, my_foods.py, food_detail.py, resources.py)
-sous la forme d'une fonction
-`show_xxx(ctx)` qui construit ses widgets et les affiche avec ui/layout.show_screen. Aucun de
+profile_edit.py, custom_food.py, home.py, week.py, compare.py, my_foods.py, food_detail.py,
+resources.py) sous la forme d'une fonction `show_xxx(ctx)` qui construit ses widgets et les
+affiche avec ui/layout.show_screen. Aucun de
 ces fichiers n'importe les autres : ils naviguent via `ctx.router.show_yyy()`, et c'est
 uniquement ce module-ci qui connaît tous les écrans et les relie entre eux. Ça évite les
 imports circulaires et ça permet de lire/modifier un écran sans avoir les autres ouverts.
@@ -23,6 +23,7 @@ import flet as ft
 from nutrition import CONFIG, load_foods, merge_foods
 from storage import load_state
 
+from .compare import show_compare
 from .context import AppContext
 from .custom_food import show_custom_food
 from .food_detail import show_food_detail
@@ -67,6 +68,7 @@ def run(page: ft.Page) -> None:
     )
     ctx.router.show_main = lambda day=None: show_main(ctx, day)
     ctx.router.show_week = lambda: show_week(ctx)
+    ctx.router.show_compare = lambda: show_compare(ctx)
     ctx.router.show_my_foods = lambda: show_my_foods(ctx)
     ctx.router.show_food_detail = lambda name: show_food_detail(ctx, name)
     ctx.router.show_resources = lambda: show_resources(ctx)

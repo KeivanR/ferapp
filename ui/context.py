@@ -44,6 +44,7 @@ class Router:
     show_week: Optional[Callable[[], None]] = None
     show_my_foods: Optional[Callable[[], None]] = None
     show_food_detail: Optional[Callable[[str], None]] = None  # fiche de l'aliment perso de ce nom
+    show_compare: Optional[Callable[[], None]] = None
     show_resources: Optional[Callable[[], None]] = None
 
 
@@ -61,6 +62,10 @@ class AppContext:
     # Dernier jour affiché par l'accueil : les sous-écrans (profil, ajout d'un aliment) y
     # reviennent avec `ctx.router.show_main(ctx.home_day)`. None = aujourd'hui.
     home_day: Optional[datetime.date] = None
+    # Onglet Comparer : aliments choisis (voir comparison.py) et quantité comparée. Gardés le temps
+    # de la session, pour retrouver sa comparaison en revenant sur l'onglet ; pas enregistrés.
+    compare_selection: list[dict] = field(default_factory=list)
+    compare_per_portion: bool = False
 
     def get_profile(self) -> Profile:
         return Profile.from_dict(self.state["profile"])

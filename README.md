@@ -25,7 +25,7 @@ ruff check . && ruff format . # vérifie le code et le remet en forme (pip insta
   - un profil existe déjà -> la page principale s'ouvre directement ;
   - premier lancement, aucun profil enregistré -> un écran de bienvenue invite à créer son profil avant de
     proposer quoi que ce soit d'autre (bouton « Remplir mon profil »).
-- **Barre du bas** : quatre onglets, toujours accessibles une fois le profil créé :
+- **Barre du bas** : cinq onglets, toujours accessibles une fois le profil créé :
   - **Accueil** : la page du jour (cercles, saisie des repas, repas du jour). Sous le titre, les flèches ‹ ›
     passent à la veille / au lendemain, et toucher la date ouvre un calendrier pour aller à n'importe quel jour
     passé (jusqu'à 5 ans, pas dans le futur) : on y ajoute, corrige ou supprime les repas exactement comme
@@ -40,7 +40,16 @@ ruff check . && ruff format . # vérifie le code et le remet en forme (pip insta
     Toucher une case remplie ouvre le détail du nutriment pour ce jour-là, comme un cercle de l'accueil (avec un
     bouton « Modifier les repas de ce jour ») ; toucher un jour (en-tête de colonne) ou une case vide « – » ouvre
     l'accueil sur ce jour-là pour ajouter ou modifier ses repas ;
-  - **Mes aliments** : tous les aliments que tu as créés, par ordre alphabétique (avec un champ de recherche à
+  - **Comparer** : on cherche un aliment (ou on touche un raccourci « souvent noté ») et on voit ce qu'il
+    apporte pour chaque nutriment suivi ; on peut en ajouter jusqu'à 4 (`compare_max_foods`) pour les comparer.
+    Une carte par nutriment, une barre horizontale par aliment : sa longueur est la part de l'apport journalier
+    recommandé, sur la même échelle pour toutes les cartes, et la valeur exacte est écrite à droite (en gras pour
+    l'aliment qui en apporte le plus). Chaque aliment a une couleur et une lettre (A, B, C...) rappelées devant
+    chaque barre, et les garde quand on en retire un autre. Un bouton bascule entre « Pour 100 g » et « Par
+    portion » (l'unité familière de chaque aliment, ex. 1 fruit). Une barre pleine vaut 100 % de l'apport
+    recommandé (moins si tous les apports sont petits) ; au-delà, elle est suivie d'un chevron
+    (`compare_scale_max`). La comparaison est gardée tant que l'app reste ouverte ;
+  - **Mes aliments** (« Aliments » dans la barre) : tous les aliments que tu as créés, par ordre alphabétique (avec un champ de recherche à
     partir de 6, `my_foods_search_min`), et le bouton « Nouvel aliment ». Chaque ligne indique s'il s'agit d'une
     recette ou de nutriments saisis à la main, ses unités et combien de fois il a été noté. Toucher un aliment ouvre
     sa fiche, en lecture seule : sa recette (ingrédients, grammages, poids final), ses unités, ses teneurs pour
@@ -106,9 +115,9 @@ Tout ce qui se règle sans toucher au code est dans `config/` : `config.toml` (t
 
 | Section | Contenu |
 | --- | --- |
-| `[app]` | titre, phrase d'accroche et durée de la page de démarrage, fichier d'aliments (`foods.csv`), nombre de suggestions affichées, années d'historique du calendrier (`history_years`), nombre minimal de semaines consultables (`weeks_min`), seuil d'apparition de la recherche dans Mes aliments (`my_foods_search_min`) |
+| `[app]` | titre, phrase d'accroche et durée de la page de démarrage, fichier d'aliments (`foods.csv`), nombre de suggestions affichées, années d'historique du calendrier (`history_years`), nombre minimal de semaines consultables (`weeks_min`), seuil d'apparition de la recherche dans Mes aliments (`my_foods_search_min`), nombre d'aliments comparés et de raccourcis dans l'onglet Comparer (`compare_max_foods`, `compare_suggestions`) |
 | `[profile]` | âge par défaut, âges min/max acceptés, tranche d'âge où « règles » est coché par défaut |
-| `[display]` | taille et épaisseur des cercles, nombre maximal de lignes de cercles (`ring_rows_max`), couleurs (en cours / atteint / aliment perso), seuil « apport bas » de l'onglet Semaine (`low_threshold`, en %, et `color_low`), couleurs des aliments dans le détail d'un cercle (`chart_colors`, `chart_color_other`), glissement du calendrier de la semaine (`swipe_switch_fraction`, `swipe_switch_speed`, `swipe_snap_ms`, `week_arrow_ms`) |
+| `[display]` | taille et épaisseur des cercles, nombre maximal de lignes de cercles (`ring_rows_max`), couleurs (en cours / atteint / aliment perso), seuil « apport bas » de l'onglet Semaine (`low_threshold`, en %, et `color_low`), couleurs des aliments dans le détail d'un cercle (`chart_colors`, `chart_color_other`), glissement du calendrier de la semaine (`swipe_switch_fraction`, `swipe_switch_speed`, `swipe_snap_ms`, `week_arrow_ms`), échelle maximale des barres de l'onglet Comparer (`compare_scale_max`) |
 | `[foods_build]` | réglages de `build_foods.py` : groupe requis, traitement de `< x` et de `traces` |
 | `[nutrients.<clé>]` | un bloc par nutriment : nom, unité, groupe, colonne du CSV, colonnes Ciqual, **apports de référence** |
 
@@ -150,6 +159,7 @@ nutrition_app/
 ├── nutrition.py         logique métier : profil, aliments, unités, calculs (testée, sans Flet)
 ├── custom_foods.py      aliments perso déjà créés : modifier, renommer partout, supprimer (testé)
 ├── journal.py           journal des repas : lire, ajouter, modifier, supprimer, pour n'importe quel jour (testé)
+├── comparison.py        comparaison d'aliments pour l'onglet « Comparer » (testée, sans Flet)
 ├── history.py           calculs sur plusieurs jours pour l'onglet « Semaine » (testés, sans Flet)
 ├── storage.py            sauvegarde locale (JSON) du profil, du journal, des aliments perso
 ├── build_foods.py         convertit la table Ciqual .xlsx en foods.csv (à lancer à la main)
@@ -166,6 +176,7 @@ nutrition_app/
 │   ├── test_journal.py       tests de journal.py
 │   ├── test_custom_foods.py  tests de custom_foods.py
 │   ├── test_history.py       tests de history.py
+│   ├── test_comparison.py    tests de comparison.py
 │   ├── test_dates.py         tests de ui/dates.py
 │   ├── test_navigation.py    cohérence des onglets de la barre du bas
 │   └── foods_demo.csv        mini-base utilisée par les tests
@@ -184,6 +195,7 @@ nutrition_app/
     ├── profile_view.py                  fiche du profil (lecture seule)
     ├── profile_edit.py                   formulaire du profil
     ├── custom_food.py                     écran « Ajouter / Modifier un aliment »
+    ├── compare.py                          onglet Comparer (recherche, barres par nutriment)
     ├── my_foods.py                         onglet Mes aliments (liste, recherche, nouvel aliment)
     ├── food_detail.py                      fiche d'un aliment perso (recette, teneurs ; modifier, supprimer)
     ├── home.py                             onglet Accueil (saisie, cercles, repas) pour n'importe quel jour
@@ -193,7 +205,7 @@ nutrition_app/
     └── resources.py                        onglet Ressources (liens, FAQ)
 ```
 
-Deux couches bien séparées : `nutrition.py`, `journal.py`, `custom_foods.py` et `history.py` (+ `config.py`, `storage.py`, `build_foods.py`)
+Deux couches bien séparées : `nutrition.py`, `journal.py`, `custom_foods.py`, `comparison.py` et `history.py` (+ `config.py`, `storage.py`, `build_foods.py`)
 portent toute la logique et ne dépendent pas de Flet — c'est ce que testent les fichiers de `tests/`. `ui/` ne fait
 que l'afficher : chaque écran est une fonction `show_xxx(ctx)` dans son propre fichier, qui construit son contenu
 puis l'affiche avec `show_screen(ctx, contenu, ...)` (`ui/layout.py`). Aucun écran ne connaît un
@@ -228,6 +240,7 @@ marge...) restent des constantes en haut de son fichier.
 | `nutrition.py` | Logique : chargement du CSV, apports de référence, calculs |
 | `custom_foods.py` | Aliments perso déjà créés : où ils servent, modification et renommage répercutés partout, suppression |
 | `journal.py` | Journal des repas : entrées d'un jour, ajout, modification, suppression (n'importe quel jour) |
+| `comparison.py` | Comparaison d'aliments : sélection, portion, part de l'apport recommandé, échelle des barres |
 | `history.py` | Logique sur plusieurs jours : semaines, taux par jour, moyennes (onglet « Semaine ») |
 | `config/ressources.toml` | **Contenu de l'onglet Ressources** : liens utiles et FAQ (à éditer à la main) |
 | `foods.csv` | Base Ciqual convertie (valeurs pour 100 g), générée par `build_foods.py` |
@@ -239,6 +252,7 @@ marge...) restent des constantes en haut de son fichier.
 | `tests/test_journal.py` | Tests de la modification du journal |
 | `tests/test_custom_foods.py` | Tests de la modification / suppression des aliments perso |
 | `tests/test_history.py` | Tests des calculs de l'onglet « Semaine » |
+| `tests/test_comparison.py` | Tests des calculs de l'onglet « Comparer » |
 | `tests/test_dates.py` | Tests des dates écrites en français (`ui/dates.py`) |
 | `tests/test_navigation.py` | Vérifie que chaque onglet de la barre du bas mène à un écran existant |
 | `.gitignore` | Ce que git doit ignorer : caches Python/pytest, `data/` (tes données perso quand tu lances l'app en local), sorties de `flet build`, table Ciqual `.xlsx`, archives `.zip` |
